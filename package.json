@@ -10,9 +10,11 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@heygen/streaming-avatar": "^2.0.10",
     "@pinecone-database/pinecone": "^5.1.1",
     "ai": "^2.2.37",
     "dotenv": "^16.4.7",
+    "livekit-client": "^2.9.9",
     "next": "15.2.4",
     "openai": "^4.89.0",
     "react": "^19.0.0",

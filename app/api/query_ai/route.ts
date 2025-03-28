@@ -87,33 +87,20 @@ export async function POST(req: NextRequest) {
         { role: "user", content: query },
       ],
       temperature: 0.2,
-      stream: true, // Enable streaming response
+      stream: false,
+     
     });
     console.timeEnd("Chat Completion (Streaming)");
 
-    // Create a ReadableStream to send chunks to the client
-    const encoder = new TextEncoder();
-    const readableStream = new ReadableStream({
-      async start(controller) {
-        try {
-          for await (const chunk of stream) {
-            const content = chunk.choices[0]?.delta?.content || "";
-            if (content) {
-              controller.enqueue(encoder.encode(content));
-            }
-          }
-          controller.close();
-        } catch (error) {
-          controller.error(error);
-        }
-      },
-    });
+   // Extract response text
+   const generatedText = stream.choices[0]?.message?.content || "I couldn't generate a response.";
 
-    console.timeEnd("Total Request");
+   console.timeEnd("Total Request");
 
-    return new Response(readableStream, {
-      headers: { "Content-Type": "text/plain" },
-    });
+   return NextResponse.json({  generatedText });
+   
+
+   
   } catch (error: any) {
     console.error("API Error:", error);
     return NextResponse.json({ error: error.message || "Internal Server Error" }, { status: 500 });
