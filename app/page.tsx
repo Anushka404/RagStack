@@ -27,12 +27,20 @@ export default function Home() {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     
-    setIsLoading(false);
+    let fullResponse = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value, { stream: true });
+      fullResponse += chunk;
+      setResponse((prev) => prev + chunk); // Append instead of replacing
+      // Speak each chunk as it arrives
+      if (chunk.trim()) {
+        await speak(chunk);
+      }
+    }
     
-   
-
-    // Make the avatar speak the complete response
-    await speak(response);
+    setIsLoading(false);
   };
 
   return (

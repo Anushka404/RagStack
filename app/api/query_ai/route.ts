@@ -80,27 +80,47 @@ export async function POST(req: NextRequest) {
     const filledPrompt = SYSTEM_PROMPT.replace("{CONTEXT}", context);
 
     console.time("Chat Completion (Streaming)");
-    const stream = await openai.chat.completions.create({
+    const completionStream = await openai.chat.completions.create({
       model: "gpt-4-turbo",
       messages: [
         { role: "system", content: filledPrompt },
         { role: "user", content: query },
       ],
       temperature: 0.2,
-      stream: false,
-     
+      stream: true,
     });
-    console.timeEnd("Chat Completion (Streaming)");
 
-   // Extract response text
-   const generatedText = stream.choices[0]?.message?.content || "I couldn't generate a response.";
+    // Create a TransformStream to handle the streaming response
+    const encoder = new TextEncoder();
+    const transformStream = new TransformStream({
+      async transform(chunk, controller) {
+        const text = chunk.choices[0]?.delta?.content || '';
+        if (text) {
+          controller.enqueue(encoder.encode(text));
+        }
+      },
+    });
 
-   console.timeEnd("Total Request");
+    // Process the stream
+    const stream = new ReadableStream({
+      async start(controller) {
+        for await (const chunk of completionStream) {
+          const text = chunk.choices[0]?.delta?.content || '';
+          if (text) {
+            controller.enqueue(encoder.encode(text));
+          }
+        }
+        controller.close();
+      },
+    });
 
-   return NextResponse.json({  generatedText });
-   
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/plain',
+        'Transfer-Encoding': 'chunked',
+      },
+    });
 
-   
   } catch (error: any) {
     console.error("API Error:", error);
     return NextResponse.json({ error: error.message || "Internal Server Error" }, { status: 500 });
