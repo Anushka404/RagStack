@@ -2,6 +2,7 @@
 import { useState } from "react";
 import VoiceInput from "@/components/VoiceInput";
 import { useHeyGen } from "@/app/main";
+import { getRandomFillerSentence } from "@/app/utils/fillerSentences";
 
 export default function Home() {
   const [response, setResponse] = useState("");
@@ -11,6 +12,11 @@ export default function Home() {
   const handleQuery = async (text: string) => {
     setResponse(""); // Clear previous response
     setIsLoading(true); // Show loading state
+
+    // Start the avatar session if not already started
+    if (!videoRef.current?.srcObject) {
+      await startSession();
+    }
 
     const res = await fetch("/api/query_ai", {
       method: "POST",
@@ -26,21 +32,65 @@ export default function Home() {
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
+
+    setIsLoading(false);
     
     let fullResponse = "";
+    let sentenceBuffer = ""; 
+    let lastCommaTime = 0;
+    let commaDetected = false;
+    let contextReadyMarkerFound = false;
+    let fillerSentencePromise = null;
+    
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
-      const chunk = decoder.decode(value, { stream: true });
-      fullResponse += chunk;
+      const chunk = decoder.decode(value);
+      
+      // Check for context ready marker
+      if (chunk.includes("__CONTEXT_READY__") && !contextReadyMarkerFound) {
+        contextReadyMarkerFound = true;
+        // Start speaking filler sentence but don't await it
+        fillerSentencePromise = speak(getRandomFillerSentence());
+        continue;
+      }
+      
       setResponse((prev) => prev + chunk); // Append instead of replacing
-      // Speak each chunk as it arrives
-      if (chunk.trim()) {
-        await speak(chunk);
+      sentenceBuffer += chunk; // Append to sentence buffer
+
+      // Check for comma
+      if (/,/.test(chunk)) {
+        commaDetected = true;
+        lastCommaTime = Date.now();
+      }
+
+      // Check if sentence is complete
+      if (/[.!?]/.test(chunk)) {
+        // If we detected a comma recently, wait for 1 second
+        if (commaDetected && Date.now() - lastCommaTime < 1000) {
+          await new Promise(resolve => setTimeout(resolve, 1000 - (Date.now() - lastCommaTime)));
+        }
+        
+        // If we have a filler sentence in progress, wait for it to finish
+        if (fillerSentencePromise) {
+          await fillerSentencePromise;
+          fillerSentencePromise = null;
+        }
+        
+        await speak(sentenceBuffer.trim()); 
+        sentenceBuffer = ""; 
+        commaDetected = false;
       }
     }
-    
-    setIsLoading(false);
+      
+    if (sentenceBuffer.trim()) {
+      // If we have a filler sentence in progress, wait for it to finish
+      if (fillerSentencePromise) {
+        await fillerSentencePromise;
+        fillerSentencePromise = null;
+      }
+      await speak(sentenceBuffer.trim());
+    }
   };
 
   return (

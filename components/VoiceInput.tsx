@@ -7,6 +7,17 @@ interface VoiceInputProps {
   language?: string;
 }
 
+// Text correction function
+const correctText = (text: string): string => {
+  // Convert "simply q" to "simply cue"
+  text = text.replace(/\bsimply\s+q\b/gi, "simply cue");
+  
+  // Convert "graphic" to "graphy"
+  text = text.replace(/\bgraphic\b/gi, "graphy");
+  
+  return text;
+};
+
 const VoiceInput = ({ 
   onResult, 
   language = 'en-US'
@@ -14,6 +25,7 @@ const VoiceInput = ({
   const [error, setError] = useState<string>("");
   const [microphoneAvailable, setMicrophoneAvailable] = useState(true);
   const [isClient, setIsClient] = useState(false);
+  const [isListening, setIsListening] = useState(false);
 
   const { 
     transcript, 
@@ -44,6 +56,7 @@ const VoiceInput = ({
 
   const handleStart = () => {
     setError("");
+    setIsListening(true);
     SpeechRecognition.startListening({ 
       continuous: true, 
       language: language
@@ -52,7 +65,10 @@ const VoiceInput = ({
 
   const handleStop = () => {
     SpeechRecognition.stopListening();
-    onResult(transcript);
+    setIsListening(false);
+    // Process the text before sending it
+    const correctedText = correctText(transcript);
+    onResult(correctedText);
     resetTranscript();
   };
 
@@ -95,6 +111,18 @@ const VoiceInput = ({
           </p>
         )}
       </div>
+
+      {isListening && (
+        <div className="mt-2 flex justify-center">
+          <div className="flex space-x-1">
+            <div className="w-2 h-8 bg-blue-500 rounded-full animate-pulse" style={{ animationDelay: '0ms' }}></div>
+            <div className="w-2 h-8 bg-blue-500 rounded-full animate-pulse" style={{ animationDelay: '100ms' }}></div>
+            <div className="w-2 h-8 bg-blue-500 rounded-full animate-pulse" style={{ animationDelay: '200ms' }}></div>
+            <div className="w-2 h-8 bg-blue-500 rounded-full animate-pulse" style={{ animationDelay: '300ms' }}></div>
+            <div className="w-2 h-8 bg-blue-500 rounded-full animate-pulse" style={{ animationDelay: '400ms' }}></div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -24,3 +24,25 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Typing animation for response text */
+.typing-animation {
+  border-right: 2px solid #000;
+  white-space: pre-wrap;
+  animation: blink 0.75s step-end infinite;
+}
+
+@keyframes blink {
+  from, to { border-color: transparent }
+  50% { border-color: #000; }
+}
+
+/* Avatar thinking animation */
+@keyframes thinking {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.animate-thinking {
+  animation: thinking 1s ease-in-out infinite;
+}

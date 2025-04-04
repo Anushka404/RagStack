@@ -79,18 +79,40 @@ export function useHeyGen() {
     }
   };
 
-  // Speak Function
+ //speech pacing
+  const enhanceForSpeech = (text: string) => {
+    // First, protect compound words that might be broken by commas
+    const protectedText = text
+      .replace(/\b(monetize|monetization|monetizing)\b/g, "[[$1]]")
+      .replace(/\b(on-demand|interactive|technology-based)\b/g, "[[$1]]");
+
+    // Add pauses for punctuation
+    const withPauses = protectedText
+      .replace(/\.\s/g, ". ... ") 
+      .replace(/,\s/g, ", ... ") 
+      .replace(/:/g, ": ...") 
+      .replace(/\?/g, "? ...") 
+      .replace(/!/g, "! ...");
+
+    // Remove protection markers
+    return withPauses.replace(/\[\[(.*?)\]\]/g, "$1");
+  };
+  
+   // Speak Function
   const speak = async (text: string) => {
     if (!avatar) {
       console.error("Avatar instance is null!");
       return;
     }
   
+    // Process text for better speech pacing
+    const formattedText = enhanceForSpeech(text);
+  
     try {
-      console.log("Passing text to avatar.speak:", text);
+      // console.log("Passing enhanced text to avatar.speak:", formattedText);
   
       await avatar.speak({
-        text: text,
+        text: formattedText, 
         taskType: TaskType.REPEAT,
       });
   
@@ -99,6 +121,6 @@ export function useHeyGen() {
       console.error("Error speaking:", error);
     }
   };
-
+  
   return { videoRef, startSession, endSession, speak, loading };
 }
