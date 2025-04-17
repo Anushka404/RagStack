@@ -12,8 +12,7 @@ const pineconeIndex = pinecone.index("knowledge-base");
 
 const SYSTEM_PROMPT = `You are a helpful assistant. Answer the user's query based *only* on the provided context.
 If the context does not contain the information needed to answer the query, state that clearly.
-Do not make up information. Be concise and directly address the query.Give this answer in suited for a voice assistant,
-Also "Simply Q" means "Simply cue" and "Graphic" means "Graphy company".
+Do not make up information. Be concise and directly address the query.Give this answer in suited for a voice assistant.
 
 Context:
 ---

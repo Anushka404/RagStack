@@ -1,22 +1,18 @@
 "use client";
 import { useState } from "react";
 import VoiceInput from "@/components/VoiceInput";
-import { useHeyGen } from "@/app/main";
-import { getRandomFillerSentence } from "@/app/utils/fillerSentences";
 
 export default function Home() {
   const [response, setResponse] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const { videoRef, startSession, endSession, speak, loading } = useHeyGen();
+  const [file, setFile] = useState<File | null>(null);
+  const [uploadStatus, setUploadStatus] = useState("");
+  const [isParsing, setIsParsing] = useState(false);
+  const [query, setQuery] = useState(""); // 🆕 state for typed input
 
   const handleQuery = async (text: string) => {
-    setResponse(""); // Clear previous response
-    setIsLoading(true); // Show loading state
-
-    // Start the avatar session if not already started
-    if (!videoRef.current?.srcObject) {
-      await startSession();
-    }
+    setResponse("");
+    setIsLoading(true);
 
     const res = await fetch("/api/query_ai", {
       method: "POST",
@@ -34,104 +30,116 @@ export default function Home() {
     const decoder = new TextDecoder();
 
     setIsLoading(false);
-    
-    let fullResponse = "";
-    let sentenceBuffer = ""; 
-    let lastCommaTime = 0;
-    let commaDetected = false;
-    let contextReadyMarkerFound = false;
+
+    let sentenceBuffer = "";
     let fillerSentencePromise = null;
-    
+
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
       const chunk = decoder.decode(value);
-      
-      // Check for context ready marker
-      if (chunk.includes("__CONTEXT_READY__") && !contextReadyMarkerFound) {
-        contextReadyMarkerFound = true;
-        // Start speaking filler sentence but don't await it
-        fillerSentencePromise = speak(getRandomFillerSentence());
-        continue;
-      }
-      
-      setResponse((prev) => prev + chunk); // Append instead of replacing
-      sentenceBuffer += chunk; // Append to sentence buffer
 
-      // Check for comma
-      if (/,/.test(chunk)) {
-        commaDetected = true;
-        lastCommaTime = Date.now();
-      }
-
-      // Check if sentence is complete
-      if (/[.!?]/.test(chunk)) {
-        // If we detected a comma recently, wait for 1 second
-        if (commaDetected && Date.now() - lastCommaTime < 1000) {
-          await new Promise(resolve => setTimeout(resolve, 1000 - (Date.now() - lastCommaTime)));
-        }
-        
-        // If we have a filler sentence in progress, wait for it to finish
-        if (fillerSentencePromise) {
-          await fillerSentencePromise;
-          fillerSentencePromise = null;
-        }
-        
-        await speak(sentenceBuffer.trim()); 
-        sentenceBuffer = ""; 
-        commaDetected = false;
-      }
+      setResponse((prev) => prev + chunk);
+      sentenceBuffer += chunk;
     }
-      
-    if (sentenceBuffer.trim()) {
-      // If we have a filler sentence in progress, wait for it to finish
-      if (fillerSentencePromise) {
-        await fillerSentencePromise;
-        fillerSentencePromise = null;
+
+    if (sentenceBuffer.trim() && fillerSentencePromise) {
+      await fillerSentencePromise;
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!file) return;
+
+    setIsParsing(true);
+    setUploadStatus("Uploading PDF....");
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/upload_doc", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        setUploadStatus("Upload and parsing successful.");
+      } else {
+        setUploadStatus(
+          `Error: ${data?.error?.message || JSON.stringify(data) || "Upload failed."}`
+        );
       }
-      await speak(sentenceBuffer.trim());
+    } catch (err) {
+      console.error("Upload failed:", err);
+      setUploadStatus("Error uploading or parsing PDF.");
+    }
+
+    setIsParsing(false);
+  };
+
+  const handleSubmitText = () => {
+    if (query.trim()) {
+      handleQuery(query.trim());
+      setQuery("");
     }
   };
 
   return (
-    <>
     <div className="p-10">
-      <h1 className="text-2xl font-bold">AI Voice Assistant</h1>
+      <h1 className="text-2xl font-bold mb-4">Ask it away</h1>
+
+      {/* Text Input */}
+      <div className="flex gap-2 mb-4">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleSubmitText()}
+          placeholder="Type your question..."
+          className="flex-1 border border-gray-300 rounded px-3 py-2 text-white"
+        />
+        <button
+          onClick={handleSubmitText}
+          className="bg-blue-600 text-white px-4 py-2 rounded"
+        >
+          Ask
+        </button>
+      </div>
+
+      {/* Voice Input */}
       <VoiceInput onResult={handleQuery} />
 
+      {/* Response Section */}
       <div className="mt-4">
         <p className="font-semibold">Response:</p>
         <p className="mt-2 bg-gray-100 p-3 rounded-md min-h-[50px] text-black">
           {isLoading ? "Generating response..." : response || "Waiting for input..."}
         </p>
       </div>
-      <div className="mt-6">
-        <p className="font-semibold">Avatar:</p>
-        <video
-          ref={videoRef}
-          className="w-full max-h-[400px] border rounded-lg my-5"
-          autoPlay
-        ></video>
-      </div>
 
-      {/* Buttons to Control Avatar */}
-      <div className="mt-4 flex gap-4">
+      {/* PDF Upload Section */}
+      <div className="mt-6">
+        <p className="font-semibold mb-2">Upload a PDF Document:</p>
+        <input
+          type="file"
+          accept=".pdf"
+          onChange={(e) => setFile(e.target.files?.[0] || null)}
+          className="mb-2"
+        />
         <button
-          onClick={startSession}
-          disabled={loading}
-          className="px-4 py-2 bg-blue-500 text-white rounded"
+          className="px-4 py-2 bg-green-600 text-white rounded disabled:opacity-50"
+          disabled={!file || isParsing}
+          onClick={handleUpload}
         >
-          {loading ? "Starting..." : "Start Avatar"}
+          {isParsing ? "Parsing..." : "Upload & Parse"}
         </button>
-        <button
-          onClick={endSession}
-          className="px-4 py-2 bg-red-500 text-white rounded"
-        >
-          End Avatar
-        </button>
+        {uploadStatus && (
+          <p className="mt-2 text-sm text-gray-600">{uploadStatus}</p>
+        )}
       </div>
     </div>
-   
-    </>
   );
 }

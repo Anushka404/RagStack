@@ -10,13 +10,21 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@adobe/pdfservices-node-sdk": "^4.1.0",
     "@heygen/streaming-avatar": "^2.0.10",
+    "@langchain/community": "^0.3.40",
+    "@langchain/core": "^0.3.44",
     "@pinecone-database/pinecone": "^5.1.1",
-    "ai": "^2.2.37",
+    "adm-zip": "^0.5.16",
+    "axios": "^1.8.4",
     "dotenv": "^16.4.7",
+    "form-data": "^4.0.2",
+    "jose": "^6.0.10",
+    "jsonwebtoken": "^9.0.2",
     "livekit-client": "^2.9.9",
     "next": "15.2.4",
     "openai": "^4.89.0",
+    "pdf-parse": "^1.1.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-speech-recognition": "^4.0.0"
@@ -24,6 +32,8 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
+    "@types/adm-zip": "^0.5.7",
+    "@types/jsonwebtoken": "^9.0.9",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
