@@ -14,6 +14,11 @@ const SYSTEM_PROMPT = `You are a helpful assistant. Answer the user's query base
 If the context does not contain the information needed to answer the query, state that clearly.
 Do not make up information. Be concise and directly address the query.Give this answer in suited for a voice assistant.
 
+Rules:
+- If the user's question asks about a specific person, you must **only respond** if the context explicitly contains that person.
+- Do NOT guess or assume facts based on similar people.
+- If the context doesn't mention that person, say: "The context does not include information about [person]."
+
 Context:
 ---
 {CONTEXT}
@@ -57,10 +62,14 @@ export async function POST(req: NextRequest) {
           console.time("Pinecone Query");
           const searchResults = await pineconeIndex.query({
             vector: queryEmbedding,
-            topK: 5,
+            topK: 10,
             includeMetadata: true,
+          
+    
+            
           });
           console.timeEnd("Pinecone Query");
+          console.log(searchResults);
 
           if (!searchResults.matches || searchResults.matches.length === 0) {
             console.log("No relevant data found in Pinecone.");
