@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { Pinecone } from "@pinecone-database/pinecone";
-import { routeQuery } from "@/app/agents/RouterAgent";
+import { routeQuery, extractEntityNameFromText } from "@/app/agents/RouterAgent"; // make sure this path is correct
 
 if (!process.env.OPENAI_API_KEY || !process.env.PINECONE_API_KEY) {
   throw new Error("Missing OpenAI or Pinecone API Key in environment variables");
@@ -12,6 +12,7 @@ const pinecone = new Pinecone({ apiKey: process.env.PINECONE_API_KEY });
 const pineconeIndex = pinecone.index("knowledge-base");
 
 const lastQueryMap = new Map<string, string>();
+const lastEntityMap = new Map<string, string>(); // 🧠 New memory store
 
 const SYSTEM_PROMPT = `You are a helpful assistant. Answer the user's query based *only* on the provided context.
 If the context does not contain the information needed to answer the query, state that clearly.
@@ -44,14 +45,16 @@ export async function POST(req: NextRequest) {
     const userId = req.headers.get("x-user-id") || "anonymous";
     const lastQuery = lastQueryMap.get(userId);
 
+    // 🧠 Try resolving query using memory and context
+    const memoryEntity = lastEntityMap.get(userId);
     const { expandedQuery, shouldRewrite, resolvedEntity, reason } = await routeQuery(query, lastQuery);
     const finalQuery = expandedQuery;
-
-    console.log(" Router Decision:", { shouldRewrite, resolvedEntity, reason });
-    console.log(" Final Query to GPT:", finalQuery);
+    console.log("🧠 Router Decision:", { shouldRewrite, resolvedEntity, reason });
 
     lastQueryMap.set(userId, finalQuery);
+    if (resolvedEntity) lastEntityMap.set(userId, resolvedEntity); // Store resolved entity
 
+    // 🔎 Embed the query
     console.time("Embedding");
     const embeddingResponse = await openai.embeddings.create({
       model: "text-embedding-ada-002",
@@ -63,6 +66,8 @@ export async function POST(req: NextRequest) {
     if (!queryEmbedding) throw new Error("Failed to generate query embedding.");
 
     const encoder = new TextEncoder();
+    let gptFullText = ""; // 🧠 Capture full response text for later entity extraction
+
     const readableStream = new ReadableStream({
       async start(controller) {
         try {
@@ -72,30 +77,18 @@ export async function POST(req: NextRequest) {
           console.time("Pinecone Query");
           const pineconeQueryOptions: any = {
             vector: queryEmbedding,
-            topK: 10,
+            topK: 2,
             includeMetadata: true,
           };
 
-          if (resolvedEntity) {
-            pineconeQueryOptions.filter = {
-              people: { $in: [resolvedEntity] }
-            };
-          }
-
-          console.log("🔎 Pinecone filter being used:", pineconeQueryOptions.filter || "none");
+          // if (resolvedEntity) {
+          //   pineconeQueryOptions.filter = {
+          //     people: { $in: [resolvedEntity] },
+          //   };
+          // }
 
           const searchResults = await pineconeIndex.query(pineconeQueryOptions);
           console.timeEnd("Pinecone Query");
-
-          // 🧾 Log each match
-          // console.log(" Pinecone Returned Matches:");
-          // searchResults.matches.forEach((match, i) => {
-          //   const id = match.id;
-          //   const score = match.score?.toFixed(4);
-          //   const people = match.metadata?.people || [];
-          //   const textPreview = match.metadata?.text?.slice(0, 100)?.replace(/\n/g, " ");
-          //   console.log(`• #${i + 1} | ID: ${id} | Score: ${score} | People: ${JSON.stringify(people)} | Text: "${textPreview}..."`);
-          // });
 
           if (!searchResults.matches || searchResults.matches.length === 0) {
             controller.enqueue(encoder.encode("I could not find relevant information to answer your query."));
@@ -109,13 +102,12 @@ export async function POST(req: NextRequest) {
             .join("\n\n---\n\n");
 
           if (!context || context.trim().length === 0) {
-            controller.enqueue(encoder.encode("I found some related documents, but could not extract usable context to answer your query."));
+            controller.enqueue(encoder.encode("I found related documents, but couldn't extract usable context."));
             controller.close();
             return;
           }
 
-          // 🧠 Log final context
-          console.log("🧠 Final context sent to GPT:\n", context.slice(0, 1000), "\n...");
+          console.log("🧠 Final context sent to GPT:\n", context.slice(0, 500), "\n...");
 
           const filledPrompt = SYSTEM_PROMPT.replace("{CONTEXT}", context);
 
@@ -134,6 +126,7 @@ export async function POST(req: NextRequest) {
           for await (const chunk of stream) {
             const content = chunk.choices[0]?.delta?.content || "";
             if (content) {
+              gptFullText += content;
               controller.enqueue(encoder.encode(content));
             }
           }
@@ -146,12 +139,20 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // 🧠 Try extracting person from the GPT response if query didn’t yield one
+    if (!resolvedEntity) {
+      const entityFromResponse = await extractEntityNameFromText(gptFullText);
+      if (entityFromResponse) {
+        console.log("🧠 Entity remembered from GPT response:", entityFromResponse);
+        lastEntityMap.set(userId, entityFromResponse);
+      }
+    }
+
     console.timeEnd("Total Request");
 
     return new Response(readableStream, {
       headers: { "Content-Type": "text/plain" },
     });
-
   } catch (error: any) {
     console.error("API Error:", error);
     return NextResponse.json({ error: error.message || "Internal Server Error" }, { status: 500 });
