@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
 
     // 🧠 Try resolving query using memory and context
     const memoryEntity = lastEntityMap.get(userId);
-    const { expandedQuery, shouldRewrite, resolvedEntity, reason } = await routeQuery(query, lastQuery);
+    const { expandedQuery, shouldRewrite, resolvedEntity, reason } = await routeQuery(query, lastQuery ,userId);
     const finalQuery = expandedQuery;
     console.log("🧠 Router Decision:", { shouldRewrite, resolvedEntity, reason });
 
@@ -107,7 +107,7 @@ export async function POST(req: NextRequest) {
             return;
           }
 
-          console.log("🧠 Final context sent to GPT:\n", context.slice(0, 500), "\n...");
+          // console.log("🧠 Final context sent to GPT:\n", context.slice(0, 500), "\n...");
 
           const filledPrompt = SYSTEM_PROMPT.replace("{CONTEXT}", context);
 

@@ -16,7 +16,7 @@ export default function Home() {
 
     const res = await fetch("/api/query_ai", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-user-id": "anonymous" },
       body: JSON.stringify({ query: text }),
     });
 
@@ -87,6 +87,16 @@ export default function Home() {
     }
   };
 
+  const clearMemory = async () => {
+    const res = await fetch("/api/clear_memory", {
+      method: "POST",
+      headers: { "x-user-id": "anonymous" },
+    });
+    const data = await res.json();
+    alert(data.message || "Memory cleared.");
+    setResponse(""); // optional: clear response from UI
+  };
+
   return (
     <div className="p-10">
       <h1 className="text-2xl font-bold mb-4">Ask it away</h1>
@@ -99,7 +109,7 @@ export default function Home() {
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSubmitText()}
           placeholder="Type your question..."
-          className="flex-1 border border-gray-300 rounded px-3 py-2 text-amber-300"
+          className="flex-1 border border-gray-300 rounded px-3 py-2 text-blue-700"
         />
         <button
           onClick={handleSubmitText}
@@ -118,6 +128,16 @@ export default function Home() {
         <p className="mt-2 bg-gray-100 p-3 rounded-md min-h-[50px] text-black">
           {isLoading ? "Generating response..." : response || "Waiting for input..."}
         </p>
+      </div>
+
+       {/* Clear Memory Button */}
+       <div className="mt-4">
+        <button
+          onClick={clearMemory}
+          className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded"
+        >
+           Clear Memory
+        </button>
       </div>
 
       {/* PDF Upload Section */}
