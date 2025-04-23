@@ -8,7 +8,9 @@ export default function Home() {
   const [file, setFile] = useState<File | null>(null);
   const [uploadStatus, setUploadStatus] = useState("");
   const [isParsing, setIsParsing] = useState(false);
-  const [query, setQuery] = useState(""); // 🆕 state for typed input
+  const [query, setQuery] = useState(""); 
+  const [submittedQuery, setSubmittedQuery] = useState(""); 
+
 
   const handleQuery = async (text: string) => {
     setResponse("");
@@ -82,6 +84,7 @@ export default function Home() {
 
   const handleSubmitText = () => {
     if (query.trim()) {
+      setSubmittedQuery(query.trim());
       handleQuery(query.trim());
       setQuery("");
     }
@@ -122,8 +125,18 @@ export default function Home() {
       {/* Voice Input */}
       <VoiceInput onResult={handleQuery} />
 
+      <div className="mt-4">
+      
+    <div className="mb-2">
+      <p className="font-semibold">User query:</p>
+      <p className="mt-2 bg-gray-100 p-3 rounded-md min-h-[50px] text-black">{submittedQuery}</p>
+    </div>
+
+  </div>
+
       {/* Response Section */}
       <div className="mt-4">
+        
         <p className="font-semibold">Response:</p>
         <p className="mt-2 bg-gray-100 p-3 rounded-md min-h-[50px] text-black">
           {isLoading ? "Generating response..." : response || "Waiting for input..."}

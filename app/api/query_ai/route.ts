@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
     const readableStream = new ReadableStream({
       async start(controller) {
         try {
-          controller.enqueue(encoder.encode("__CONTEXT_READY__"));
+          controller.enqueue(encoder.encode("Agent's Reply:- "));
 
           // 🔍 Pinecone Search
           console.time("Pinecone Query");
