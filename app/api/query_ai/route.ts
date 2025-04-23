@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
           console.time("Pinecone Query");
           const pineconeQueryOptions: any = {
             vector: queryEmbedding,
-            topK: 2,
+            topK: 5,
             includeMetadata: true,
           };
 
@@ -119,7 +119,7 @@ export async function POST(req: NextRequest) {
               { role: "system", content: filledPrompt },
               { role: "user", content: finalQuery },
             ],
-            temperature: 0.2,
+            temperature: 0.4,
             stream: true,
           });
 
