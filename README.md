@@ -1,36 +1,52 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 📄 AskPDF Bot
 
-## Getting Started
+An intelligent **AI-powered PDF assistant** that allows users to upload any document and **ask contextual questions** about its content — powered by **OpenAI embeddings**, **Next.js**, and **Pinecone** vector search.
 
-First, run the development server:
+> 🚀 A fully-functional **RAG (Retrieval-Augmented Generation)** app built using **Next.js**, **OpenAI**, and **Pinecone**, designed to deliver accurate, document-grounded answers.
+
+---
+
+## 🌐 Live Demo
+
+🔗 [https://2-way-rag.vercel.app/](https://2-way-rag.vercel.app/)
+
+---
+
+## ✨ Features
+
+- 🧠 **RAG-based question answering** — retrieves the most relevant document chunks using embeddings.  
+- 📤 **Upload PDFs easily** — drag-and-drop or select files.  
+- ⚡ **Fast & contextual responses** using OpenAI’s Ada-002 embeddings + GPT API.  
+- 🗂️ **Chunked document indexing** for scalable semantic search.  
+- 🪄 **Clean chat-style interface** built with Tailwind CSS.  
+- 🔐 **Secure API routes** using environment variables and rate-limited endpoints.
+
+---
+
+## 🧱 Tech Stack
+
+| Category | Technologies |
+|-----------|---------------|
+| **Frontend** | Next.js, React.js, Tailwind CSS |
+| **Backend** | Node.js (Next.js API Routes) |
+| **AI** | OpenAI Embeddings + Chat Completion APIs |
+| **Vector DB** | Pinecone |
+| **File Parsing** | pdf-parse / pdfjs |
+| **Deployment** | Vercel |
+
+---
+
+## ⚙️ Installation
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+# Clone the repository
+git clone https://github.com/Anant-404/AskPDF.git
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+# Navigate to the project folder
+cd AskPDF
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+# Install dependencies
+npm install
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+# Create an environment file
+cp .env.example .env.local
