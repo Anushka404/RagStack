@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
           // 💬 Stream GPT Response
           console.time("Chat Completion (Streaming)");
           const stream = await openai.chat.completions.create({
-            model: "gpt-3.5-turbo",
+            model: "gpt-4o",
             messages: [
               { role: "system", content: filledPrompt },
               { role: "user", content: finalQuery },
