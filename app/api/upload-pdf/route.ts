@@ -9,6 +9,9 @@ import { saveDocument } from "@/lib/db/documents";
 import { updateThreadDocument, ensureThread } from "@/lib/db/threads";
 import { getIndexStats } from "@/lib/pinecone/vector-store";
 
+// Parsing + embedding a PDF can take a while; Vercel Hobby allows up to 60s.
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   let tempPdfPath: string | null = null;
 

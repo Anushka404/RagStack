@@ -15,6 +15,8 @@ import { saveMessage } from "@/lib/db/messages";
 
 export const runtime = "nodejs";
 
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createServerSupabaseClient();

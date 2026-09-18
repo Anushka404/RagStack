@@ -15,4 +15,4 @@ export function getPineconeClient(): Pinecone {
   return _pinecone;
 }
 
-export const PINECONE_INDEX_NAME = "askpdf";
+export const PINECONE_INDEX_NAME = process.env.PINECONE_INDEX_NAME || "askpdf";

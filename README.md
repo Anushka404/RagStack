@@ -1,14 +1,8 @@
 # 📄 AskPDF Bot
 
-An intelligent **AI-powered PDF assistant** that allows users to upload any document and **ask contextual questions** about its content — powered by **OpenAI embeddings**, **Next.js**, and **Pinecone** vector search.
+An intelligent **AI-powered PDF assistant** that allows users to upload any document and **ask contextual questions** about its content — powered by **Gemini or OpenAI embeddings**, **Next.js**, and **Pinecone** vector search.
 
-> 🚀 A fully-functional **RAG (Retrieval-Augmented Generation)** app built using **Next.js**, **OpenAI**, and **Pinecone**, designed to deliver accurate, document-grounded answers.
-
----
-
-## 🌐 Live Demo
-
-🔗 [https://2-way-rag.vercel.app/](https://2-way-rag.vercel.app/)
+> 🚀 A fully-functional **RAG (Retrieval-Augmented Generation)** app built using **Next.js**, **Gemini / OpenAI**, and **Pinecone**, designed to deliver accurate, document-grounded answers.
 
 ---
 
@@ -16,7 +10,7 @@ An intelligent **AI-powered PDF assistant** that allows users to upload any docu
 
 - 🧠 **RAG-based question answering** — retrieves the most relevant document chunks using embeddings.  
 - 📤 **Upload PDFs easily** — drag-and-drop or select files.  
-- ⚡ **Fast & contextual responses** using OpenAI’s Ada-002 embeddings + GPT API.  
+- ⚡ **Fast & contextual responses** using Gemini (free tier) or OpenAI embeddings + chat models.  
 - 🗂️ **Chunked document indexing** for scalable semantic search.  
 - 🪄 **Clean chat-style interface** built with Tailwind CSS.  
 - 🔐 **Secure API routes** using environment variables and rate-limited endpoints.
@@ -28,25 +22,34 @@ An intelligent **AI-powered PDF assistant** that allows users to upload any docu
 | Category | Technologies |
 |-----------|---------------|
 | **Frontend** | Next.js, React.js, Tailwind CSS |
-| **Backend** | Node.js (Next.js API Routes) |
-| **AI** | OpenAI Embeddings + Chat Completion APIs |
+| **Backend** | Node.js (Next.js API Routes), Supabase (auth + Postgres) |
+| **AI** | Gemini (free) or OpenAI — embeddings + chat, via LangChain |
 | **Vector DB** | Pinecone |
 | **File Parsing** | pdf-parse / pdfjs |
 | **Deployment** | Vercel |
 
 ---
 
-## ⚙️ Installation
+## ⚙️ Setup (all free tiers)
+
+1. **Gemini API key** (free): https://aistudio.google.com/apikey
+   _Or use OpenAI: set `LLM_PROVIDER=openai` and `OPENAI_API_KEY` (paid API credits; ChatGPT plans don't include API access)._
+2. **Pinecone** (free Starter): create a serverless index named `ragstack`, metric `cosine`,
+   dimension `3072` for Gemini (`gemini-embedding-001`) or `1536` for OpenAI (`text-embedding-3-small`).
+3. **Supabase** (free): create a project, open *SQL Editor*, run [`supabase/schema.sql`](supabase/schema.sql).
+   For quick testing, turn off *Authentication → Sign In / Providers → Email → Confirm email*.
+4. Copy `.env.example` to `.env.local` and fill in the keys, then:
 
 ```bash
-# Clone the repository
-git clone https://github.com/Anant-404/AskPDF.git
-
-# Navigate to the project folder
-cd AskPDF
-
-# Install dependencies
 npm install
+npm run dev
+```
 
-# Create an environment file
-cp .env.example .env.local
+## 🚀 Deploy on Vercel (free Hobby plan)
+
+1. Push the repo to GitHub, then on vercel.com: *Add New → Project → Import* the repo.
+2. Add every variable from `.env.example` under *Environment Variables*, then *Deploy*.
+3. In Supabase *Authentication → URL Configuration*, set *Site URL* to your Vercel URL.
+
+Limits: Vercel caps uploads at ~4.5 MB per request and functions at 60 s on Hobby,
+so very large PDFs need splitting. Supabase free projects pause after a week of inactivity.

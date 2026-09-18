@@ -1,21 +1,25 @@
 import { ChatOpenAI } from "@langchain/openai";
+import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 
 /**
- * Centralized GPT-4o chat model for final answer generation.
- * Streaming is enabled by default on `.stream()` calls.
+ * LLM_PROVIDER=gemini uses the free Gemini API tier; anything else uses OpenAI (paid API credits).
  */
-export const chatModel = new ChatOpenAI({
-  model: "gpt-4o",
-  temperature: 0.4,
-  openAIApiKey: process.env.OPENAI_API_KEY!,
-});
+export const isGemini = process.env.LLM_PROVIDER === "gemini";
 
-/**
- * Lightweight model for query rewriting and entity extraction.
- * Faster and cheaper than GPT-4o for utility tasks.
- */
-export const utilityModel = new ChatOpenAI({
-  model: "gpt-4o-mini",
-  temperature: 0.2,
-  openAIApiKey: process.env.OPENAI_API_KEY!,
-});
+function makeModel(model: string, temperature: number) {
+  return isGemini
+    ? new ChatGoogleGenerativeAI({ model, temperature, apiKey: process.env.GOOGLE_API_KEY })
+    : new ChatOpenAI({ model, temperature, openAIApiKey: process.env.OPENAI_API_KEY });
+}
+
+/** Final answer generation. */
+export const chatModel = makeModel(
+  process.env.CHAT_MODEL || (isGemini ? "gemini-2.5-flash" : "gpt-4o-mini"),
+  0.4
+);
+
+/** Query rewriting and entity extraction. */
+export const utilityModel = makeModel(
+  process.env.UTILITY_MODEL || (isGemini ? "gemini-2.5-flash-lite" : "gpt-4o-mini"),
+  0.2
+);
