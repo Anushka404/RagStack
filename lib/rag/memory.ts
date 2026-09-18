@@ -1,103 +1,44 @@
+import { SupabaseClient } from "@supabase/supabase-js";
 import { Thread, ThreadMessage } from "@/types/memory";
 
-const threadStore = new Map<string, Thread>();
 const MAX_MESSAGES = 10;
 const MAX_ENTITIES = 5;
-const TTL_MS = 25 * 60 * 1000; // 25 minutes
-
-function now() {
-  return Date.now();
-}
 
 /**
- * Returns an existing thread or creates a fresh one.
- * Also checks and evicts expired threads.
+ * Rebuilds a thread's conversational memory from Supabase. Serverless instances
+ * don't share process memory, so the database is the only reliable source.
+ * Messages and entities come back oldest → newest.
  */
-export function getOrCreateThread(threadId: string): Thread {
-  evictExpiredThreads();
+export async function loadThreadMemory(
+  supabase: SupabaseClient,
+  userId: string,
+  threadId: string
+): Promise<Thread> {
+  const [messagesRes, entitiesRes] = await Promise.all([
+    supabase
+      .from("messages")
+      .select("role, content, created_at")
+      .eq("user_id", userId)
+      .eq("thread_id", threadId)
+      .order("created_at", { ascending: false })
+      .limit(MAX_MESSAGES),
+    supabase
+      .from("thread_entities")
+      .select("entity")
+      .eq("user_id", userId)
+      .eq("thread_id", threadId)
+      .order("created_at", { ascending: false })
+      .limit(MAX_ENTITIES),
+  ]);
+  if (messagesRes.error) throw messagesRes.error;
+  if (entitiesRes.error) throw entitiesRes.error;
 
-  const existing = threadStore.get(threadId);
-  if (existing) {
-    existing.updatedAt = now();
-    return existing;
-  }
+  const messages: ThreadMessage[] = (messagesRes.data ?? []).reverse().map((m) => ({
+    role: m.role as "user" | "assistant",
+    content: m.content,
+    timestamp: new Date(m.created_at).getTime(),
+  }));
+  const entities = [...new Set((entitiesRes.data ?? []).reverse().map((e) => e.entity))];
 
-  const thread: Thread = {
-    threadId,
-    createdAt: now(),
-    updatedAt: now(),
-    messages: [],
-    entities: [],
-    lastDocumentRef: null,
-    lastRetrievalQuery: null,
-  };
-
-  threadStore.set(threadId, thread);
-  return thread;
-}
-
-/**
- * Appends a message to the thread, keeping at most MAX_MESSAGES.
- */
-export function addMessage(
-  threadId: string,
-  role: "user" | "assistant",
-  content: string
-): void {
-  const thread = getOrCreateThread(threadId);
-  const msg: ThreadMessage = { role, content, timestamp: now() };
-  thread.messages.push(msg);
-  if (thread.messages.length > MAX_MESSAGES) {
-    thread.messages = thread.messages.slice(-MAX_MESSAGES);
-  }
-  thread.updatedAt = now();
-}
-
-/**
- * Pushes an entity into the thread's entity list.
- * Deduplicates and keeps only the last MAX_ENTITIES.
- */
-export function setEntity(threadId: string, entity: string): void {
-  const thread = getOrCreateThread(threadId);
-  thread.entities = [...thread.entities.filter((e) => e !== entity), entity].slice(
-    -MAX_ENTITIES
-  );
-  thread.updatedAt = now();
-}
-
-/**
- * Sets the last retrieval query for the thread.
- */
-export function setLastRetrievalQuery(threadId: string, query: string): void {
-  const thread = getOrCreateThread(threadId);
-  thread.lastRetrievalQuery = query;
-  thread.updatedAt = now();
-}
-
-/**
- * Sets the last referenced document for the thread.
- */
-export function setLastDocumentRef(threadId: string, ref: string): void {
-  const thread = getOrCreateThread(threadId);
-  thread.lastDocumentRef = ref;
-  thread.updatedAt = now();
-}
-
-/**
- * Clears a thread completely (all messages, entities, etc.).
- */
-export function clearThread(threadId: string): void {
-  threadStore.delete(threadId);
-}
-
-/**
- * Clears all threads that have exceeded the TTL.
- */
-function evictExpiredThreads(): void {
-  const cutoff = now() - TTL_MS;
-  for (const [id, thread] of threadStore.entries()) {
-    if (thread.updatedAt < cutoff) {
-      threadStore.delete(id);
-    }
-  }
+  return { threadId, messages, entities };
 }

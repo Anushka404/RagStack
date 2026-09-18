@@ -26,3 +26,16 @@ export async function createServerSupabaseClient() {
     }
   );
 }
+
+/**
+ * Resolves the signed-in user from the session JWT. getClaims() verifies the
+ * token locally (cached JWKS) instead of a network round trip to Supabase Auth
+ * like getUser() does.
+ */
+export async function getAuthUser(
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>
+): Promise<{ id: string; email: string } | null> {
+  const { data, error } = await supabase.auth.getClaims();
+  if (error || !data?.claims?.sub) return null;
+  return { id: data.claims.sub, email: (data.claims.email as string) || "" };
+}

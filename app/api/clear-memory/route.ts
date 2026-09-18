@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { clearThread } from "@/lib/rag/memory";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, getAuthUser } from "@/lib/supabase/server";
 import { deleteThread } from "@/lib/db/threads";
 
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createServerSupabaseClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getAuthUser(supabase);
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -14,11 +13,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const threadId = (body.threadId as string) || "anonymous";
 
-    // Clear in-memory
-    clearThread(threadId);
-
-    // Clear from DB (cascade deletes messages + entities)
-    await deleteThread(supabase, threadId).catch(() => {});
+    // Memory lives in the DB, so deleting the thread clears it (cascades to messages + entities)
+    await deleteThread(supabase, user.id, threadId).catch(() => {});
 
     return NextResponse.json({
       success: true,

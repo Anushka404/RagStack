@@ -1,22 +1,25 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
-import { ChatShell } from "@/components/chat/ChatShell";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { ChatShell, type StoredMessage } from "@/components/chat/ChatShell";
 import { UploadButton } from "@/components/chat/UploadButton";
+import { DocumentList } from "@/components/chat/DocumentList";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import type { DocumentRow } from "@/types/documents";
 
 function generateThreadId() {
   return `thread_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-interface DocInfo { fileName: string; chunkCount: number; fileSizeBytes?: number; }
 interface ThreadInfo {
   id: string;
   updated_at: string;
-  documents: { file_name: string; chunk_count: number } | null;
+  documents: { id: string; file_name: string; chunk_count: number } | null;
 }
-interface IndexStats { totalVectors: number; userVectors: number; dimension: number; }
+interface IndexStats { userVectors: number; documentCount: number; dimension: number; }
+
+const IN_PROGRESS: DocumentRow["status"][] = ["uploading", "parsing", "embedding"];
 
 function formatBytes(b: number) {
   if (b < 1024) return `${b} B`;
@@ -25,14 +28,29 @@ function formatBytes(b: number) {
 }
 
 export default function Home() {
-  const [threadId, setThreadId] = useState<string>(generateThreadId);
-  const [docInfo, setDocInfo] = useState<DocInfo | null>(null);
+  // Empty until mounted: a random ID generated during render would differ between
+  // server and client and break hydration.
+  const [threadId, setThreadId] = useState<string>("");
+  // Document linked to the current thread (null = none linked).
+  const [threadDocId, setThreadDocId] = useState<string | null>(null);
+  const [documents, setDocuments] = useState<DocumentRow[]>([]);
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   const [resetKey, setResetKey] = useState(0);
   const [userEmail, setUserEmail] = useState("");
   const [pastThreads, setPastThreads] = useState<ThreadInfo[]>([]);
   const [stats, setStats] = useState<IndexStats | null>(null);
+  // Messages for the thread shown on first load, fetched together with the thread list.
+  const [initialMessages, setInitialMessages] = useState<StoredMessage[] | undefined>(undefined);
+  const [initialLoaded, setInitialLoaded] = useState(false);
+  const processingIds = useRef(new Set<string>());
   const router = useRouter();
   const supabase = createClient();
+
+  // Thread's own document, else the latest ready one (retrieval searches all of them anyway).
+  const activeDoc =
+    documents.find((d) => d.id === threadDocId) ??
+    documents.find((d) => d.status === "ready") ??
+    null;
 
   // Load stats
   const refreshStats = useCallback(async () => {
@@ -42,52 +60,114 @@ export default function Home() {
     } catch { /* best effort */ }
   }, []);
 
+  const upsertDocument = useCallback((doc: DocumentRow) => {
+    setDocuments((prev) =>
+      prev.some((d) => d.id === doc.id) ? prev.map((d) => (d.id === doc.id ? doc : d)) : [doc, ...prev]
+    );
+  }, []);
+
+  const markFailed = useCallback((id: string, error: string) => {
+    setDocuments((prev) => prev.map((d) => (d.id === id ? { ...d, status: "failed", error } : d)));
+  }, []);
+
+  // Drives ingestion: each call embeds as much as fits in one request, so keep
+  // calling until the document is ready or failed.
+  const processDocument = useCallback(async (id: string, retry = false) => {
+    if (processingIds.current.has(id)) return;
+    processingIds.current.add(id);
+    try {
+      for (let first = true; ; first = false) {
+        const res = await fetch(`/api/documents/${id}/process${retry && first ? "?retry=1" : ""}`, { method: "POST" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.document) {
+          markFailed(id, data.error || "Processing interrupted");
+          return;
+        }
+        const doc = data.document as DocumentRow;
+        upsertDocument(doc);
+        if (doc.status === "ready") { refreshStats(); return; }
+        if (doc.status === "failed") return;
+      }
+    } catch {
+      markFailed(id, "Network error while processing");
+    } finally {
+      processingIds.current.delete(id);
+    }
+  }, [upsertDocument, markFailed, refreshStats]);
+
   useEffect(() => {
+    // Stats and threads load in parallel; neither waits on the other.
+    refreshStats();
     const load = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      setUserEmail(user.email || "");
       try {
         const res = await fetch("/api/threads");
-        if (!res.ok) return;
+        if (!res.ok) throw new Error(`Failed to load threads: ${res.status}`);
         const data = await res.json();
+        setUserEmail(data.email || "");
+        const docs: DocumentRow[] = data.documents ?? [];
+        setDocuments(docs);
+        // Resume ingestion interrupted by a reload or closed tab.
+        docs.filter((d) => IN_PROGRESS.includes(d.status)).forEach((d) => processDocument(d.id));
         if (data.threads?.length > 0) {
           setPastThreads(data.threads);
           const latest = data.threads[0];
+          setInitialMessages(data.latestMessages ?? []);
           setThreadId(latest.id);
+          setThreadDocId(latest.documents?.id ?? null);
           setResetKey((k) => k + 1);
-          if (latest.documents) {
-            setDocInfo({ fileName: latest.documents.file_name, chunkCount: latest.documents.chunk_count });
-          }
+        } else {
+          setInitialMessages([]);
+          setThreadId(generateThreadId());
         }
-      } catch (e) { console.error(e); }
-      refreshStats();
+      } catch (e) {
+        console.error(e);
+        setInitialMessages([]);
+        setThreadId(generateThreadId());
+      } finally {
+        setInitialLoaded(true);
+      }
     };
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refreshStats, processDocument]);
 
-  const handleUploadSuccess = useCallback((fileName: string, chunkCount: number, fileSizeBytes?: number, indexStats?: IndexStats) => {
-    setDocInfo({ fileName, chunkCount, fileSizeBytes });
-    if (indexStats) setStats(indexStats);
-    else refreshStats();
-  }, [refreshStats]);
+  const handleUploaded = useCallback((doc: DocumentRow) => {
+    upsertDocument(doc);
+    setThreadDocId(doc.id);
+    processDocument(doc.id);
+  }, [upsertDocument, processDocument]);
+
+  const handleDeleteDocument = async (doc: DocumentRow) => {
+    if (!window.confirm(`Delete "${doc.file_name}"? Its content will no longer be used to answer questions.`)) return;
+    setDeletingIds((prev) => new Set(prev).add(doc.id));
+    try {
+      const res = await fetch(`/api/documents/${doc.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Delete failed");
+      }
+      setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+      setPastThreads((prev) => prev.map((t) => (t.documents?.id === doc.id ? { ...t, documents: null } : t)));
+      if (threadDocId === doc.id) setThreadDocId(null);
+      refreshStats();
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setDeletingIds((prev) => { const next = new Set(prev); next.delete(doc.id); return next; });
+    }
+  };
 
   const handleNewThread = () => {
-    fetch("/api/clear-memory", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ threadId }),
-    }).catch(console.error);
+    setInitialMessages([]);
     setThreadId(generateThreadId());
-    setDocInfo(null);
+    setThreadDocId(null);
     setResetKey((k) => k + 1);
   };
 
   const handleSwitchThread = (t: ThreadInfo) => {
+    setInitialMessages(undefined);
     setThreadId(t.id);
+    setThreadDocId(t.documents?.id ?? null);
     setResetKey((k) => k + 1);
-    setDocInfo(t.documents ? { fileName: t.documents.file_name, chunkCount: t.documents.chunk_count } : null);
   };
 
   const handleSignOut = async () => {
@@ -153,30 +233,21 @@ export default function Home() {
           </div>
         )}
 
-        {/* Document info */}
-        <div className="flex flex-col gap-1.5">
-          <p className="text-[10.5px] font-semibold uppercase tracking-widest text-[#555570]">Document</p>
-          {docInfo ? (
-            <div className="flex items-start gap-2.5 p-3 bg-[#1e1e2a] border border-white/[0.07] rounded-xl">
-              <span className="text-xl flex-shrink-0">📄</span>
-              <div className="overflow-hidden">
-                <p className="text-[13px] font-medium text-[#e8e8f0] overflow-hidden text-ellipsis whitespace-nowrap" title={docInfo.fileName}>
-                  {docInfo.fileName}
-                </p>
-                <p className="text-[11px] text-[#8888aa] mt-0.5">{docInfo.chunkCount} chunks indexed</p>
-                {docInfo.fileSizeBytes && (
-                  <p className="text-[11px] text-[#555570] mt-0.5">File size: {formatBytes(docInfo.fileSizeBytes)}</p>
-                )}
-              </div>
-            </div>
-          ) : (
-            <p className="text-[13px] text-[#555570] italic">No document uploaded yet.</p>
-          )}
+        {/* Documents */}
+        <div className="flex flex-col gap-1.5 min-h-0">
+          <p className="text-[10.5px] font-semibold uppercase tracking-widest text-[#555570]">Documents</p>
+          <DocumentList
+            documents={documents}
+            activeId={activeDoc?.id ?? null}
+            deletingIds={deletingIds}
+            onDelete={handleDeleteDocument}
+            onRetry={(doc) => processDocument(doc.id, true)}
+          />
         </div>
 
         {/* ── Footer: Upload + Storage Metrics + User ── */}
         <div className="mt-auto pt-3 border-t border-white/[0.07] flex flex-col gap-3">
-          <UploadButton threadId={threadId} onUploadSuccess={handleUploadSuccess} />
+          <UploadButton threadId={threadId} onUploaded={handleUploaded} />
 
           {/* Storage & Metrics */}
           <div className="bg-[#1a1a26] border border-white/[0.05] rounded-xl p-3 flex flex-col gap-2">
@@ -190,9 +261,9 @@ export default function Home() {
                 </span>
               </div>
               <div className="flex flex-col">
-                <span className="text-[10.5px] text-[#555570]">Index Total</span>
+                <span className="text-[10.5px] text-[#555570]">Your Documents</span>
                 <span className="text-sm font-semibold text-[#e8e8f0]">
-                  {stats ? stats.totalVectors.toLocaleString() : "—"}
+                  {stats ? stats.documentCount.toLocaleString() : "—"}
                 </span>
               </div>
               <div className="flex flex-col">
@@ -204,28 +275,11 @@ export default function Home() {
               <div className="flex flex-col">
                 <span className="text-[10.5px] text-[#555570]">Last Upload</span>
                 <span className="text-sm font-semibold text-[#e8e8f0]">
-                  {docInfo?.fileSizeBytes ? formatBytes(docInfo.fileSizeBytes) : "—"}
+                  {documents[0]?.file_size_bytes ? formatBytes(documents[0].file_size_bytes) : "—"}
                 </span>
               </div>
             </div>
 
-            {/* Usage bar */}
-            {stats && stats.userVectors > 0 && (
-              <div className="flex flex-col gap-1 mt-1">
-                <div className="flex items-center justify-between text-[10.5px]">
-                  <span className="text-[#8888aa]">Your usage</span>
-                  <span className="text-[#6381ff] font-medium">
-                    {stats.totalVectors > 0 ? ((stats.userVectors / stats.totalVectors) * 100).toFixed(1) : 0}%
-                  </span>
-                </div>
-                <div className="h-1.5 bg-[#0f0f13] rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-[#4f6eff] to-[#8ba0ff] rounded-full transition-all duration-500"
-                    style={{ width: `${Math.min((stats.userVectors / Math.max(stats.totalVectors, 1)) * 100, 100)}%` }}
-                  />
-                </div>
-              </div>
-            )}
           </div>
 
           {/* User */}
@@ -248,20 +302,27 @@ export default function Home() {
         <header className="flex items-center justify-between px-7 py-4 border-b border-white/[0.07] bg-[#16161e] flex-shrink-0">
           <div className="flex items-center gap-3">
             <h1 className="text-[17px] font-semibold text-[#e8e8f0] tracking-tight">Ask your PDF</h1>
-            {docInfo && (
+            {activeDoc && (
               <span className="text-xs px-2.5 py-1 bg-[#4f6eff]/15 border border-[#4f6eff]/30 rounded-full text-[#8ba0ff] max-w-[200px] overflow-hidden text-ellipsis whitespace-nowrap">
-                {docInfo.fileName}
+                {activeDoc.file_name}
               </span>
             )}
           </div>
           <div className="flex items-center gap-2">
             <span className="text-[11px] text-[#555570]">Thread</span>
             <code className="text-[11px] px-2 py-0.5 bg-[#1e1e2a] border border-white/[0.07] rounded-md text-[#8888aa] font-mono">
-              {threadId.split("_").slice(-1)[0]}
+              {threadId ? threadId.split("_").slice(-1)[0] : "—"}
             </code>
           </div>
         </header>
-        <ChatShell key={resetKey} threadId={threadId} />
+        {initialLoaded ? (
+          <ChatShell key={resetKey} threadId={threadId} initialMessages={initialMessages} />
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center gap-3">
+            <span className="spinner" />
+            <p className="text-sm text-[#8888aa]">Loading conversation…</p>
+          </div>
+        )}
       </main>
     </div>
   );

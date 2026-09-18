@@ -1,51 +1,67 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { DocumentRow, DOCUMENTS_BUCKET, MAX_PDF_BYTES } from "@/types/documents";
 
 interface UploadButtonProps {
   threadId: string;
-  onUploadSuccess: (
-    fileName: string,
-    chunkCount: number,
-    fileSizeBytes?: number,
-    indexStats?: { totalVectors: number; userVectors: number; dimension: number }
-  ) => void;
+  /** Called once the file is in Storage; the parent then drives processing. */
+  onUploaded: (doc: DocumentRow) => void;
 }
 
-export function UploadButton({ threadId, onUploadSuccess }: UploadButtonProps) {
-  const [status, setStatus] = useState<"idle" | "uploading" | "success" | "error">("idle");
+export function UploadButton({ threadId, onUploaded }: UploadButtonProps) {
+  const [status, setStatus] = useState<"idle" | "uploading" | "error">("idle");
   const [statusText, setStatusText] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    if (fileInputRef.current) fileInputRef.current.value = "";
     if (!file) return;
+
+    if (file.type !== "application/pdf") {
+      setStatus("error");
+      setStatusText("Only PDF files are supported.");
+      return;
+    }
+    if (file.size > MAX_PDF_BYTES) {
+      setStatus("error");
+      setStatusText("PDF must be under 50 MB.");
+      return;
+    }
 
     setStatus("uploading");
     setStatusText(`Uploading ${file.name}…`);
 
+    let docId: string | null = null;
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("threadId", threadId);
-
-      const res = await fetch("/api/upload-pdf", { method: "POST", body: formData });
+      // 1. Register the document
+      const res = await fetch("/api/documents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileName: file.name, fileSizeBytes: file.size, threadId }),
+      });
       const data = await res.json();
+      if (!res.ok || !data.document) throw new Error(data.error || "Upload failed");
+      const doc = data.document as DocumentRow;
+      docId = doc.id;
 
-      if (res.ok && data.success) {
-        setStatus("success");
-        setStatusText(`✓ ${data.fileName} — ${data.chunkCount} chunks`);
-        onUploadSuccess(data.fileName, data.chunkCount, data.fileSizeBytes, data.indexStats ?? undefined);
-      } else {
-        setStatus("error");
-        setStatusText(`Error: ${data.error || "Upload failed"}`);
-      }
-    } catch {
+      // 2. Upload straight to Storage (avoids the serverless request body limit)
+      const { error: uploadError } = await createClient()
+        .storage.from(DOCUMENTS_BUCKET)
+        .upload(doc.storage_path!, file, { contentType: "application/pdf" });
+      if (uploadError) throw new Error(uploadError.message);
+
+      setStatus("idle");
+      setStatusText("");
+      onUploaded(doc);
+    } catch (err) {
+      // Don't leave an orphaned row behind when the file never reached Storage.
+      if (docId) fetch(`/api/documents/${docId}`, { method: "DELETE" }).catch(() => {});
       setStatus("error");
-      setStatusText("Network error during upload.");
+      setStatusText(`Error: ${err instanceof Error ? err.message : "Upload failed"}`);
     }
-
-    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   return (
@@ -69,17 +85,13 @@ export function UploadButton({ threadId, onUploadSuccess }: UploadButtonProps) {
           type="file"
           accept=".pdf"
           onChange={handleFileChange}
-          disabled={status === "uploading"}
+          disabled={status === "uploading" || !threadId}
           className="hidden"
         />
       </label>
 
       {statusText && (
-        <span className={`text-[11.5px] leading-tight ${
-          status === "success" ? "text-emerald-400" :
-          status === "error"   ? "text-red-400" :
-                                 "text-[#8888aa]"
-        }`}>
+        <span className={`text-[11.5px] leading-tight ${status === "error" ? "text-red-400" : "text-[#8888aa]"}`}>
           {statusText}
         </span>
       )}

@@ -1,23 +1,26 @@
 import { NextResponse } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, getAuthUser } from "@/lib/supabase/server";
 import { getIndexStats } from "@/lib/pinecone/vector-store";
+import { countUserDocuments } from "@/lib/db/documents";
 
 export async function GET() {
   try {
     const supabase = await createServerSupabaseClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getAuthUser(supabase);
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const stats = await getIndexStats();
-    const userNs = stats.namespaces?.[user.id];
+    const [stats, documentCount] = await Promise.all([
+      getIndexStats(),
+      countUserDocuments(supabase, user.id),
+    ]);
 
+    // Only this user's namespace is exposed; other users' counts stay server-side.
     return NextResponse.json({
-      totalVectors: stats.totalRecordCount ?? 0,
-      userVectors: userNs?.recordCount ?? 0,
+      userVectors: stats.namespaces?.[user.id]?.recordCount ?? 0,
+      documentCount,
       dimension: stats.dimension ?? 1536,
-      namespaceCount: Object.keys(stats.namespaces ?? {}).length,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to get stats";

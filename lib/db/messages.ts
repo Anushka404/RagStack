@@ -19,10 +19,11 @@ export async function saveMessage(
   if (error) throw error;
 }
 
-export async function getThreadMessages(supabase: SupabaseClient, threadId: string) {
+export async function getThreadMessages(supabase: SupabaseClient, userId: string, threadId: string) {
   const { data, error } = await supabase
     .from("messages")
-    .select("*")
+    .select("id, role, content, sources")
+    .eq("user_id", userId)
     .eq("thread_id", threadId)
     .order("created_at", { ascending: true });
 

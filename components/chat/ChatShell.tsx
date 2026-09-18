@@ -12,6 +12,24 @@ interface Message {
   isStreaming?: boolean;
 }
 
+export interface StoredMessage {
+  id: string;
+  role: string;
+  content: string;
+  sources: unknown;
+}
+
+function toMessage(m: StoredMessage): Message {
+  return {
+    id: m.id,
+    role: m.role as "user" | "assistant",
+    content: m.content,
+    sources: m.sources
+      ? typeof m.sources === "string" ? JSON.parse(m.sources) : (m.sources as SourceRef[])
+      : [],
+  };
+}
+
 const SOURCES_START = "__SOURCES__";
 const SOURCES_END = "__END_SOURCES__";
 
@@ -30,33 +48,24 @@ function extractSources(text: string): { cleanText: string; sources: SourceRef[]
   }
 }
 
-export function ChatShell({ threadId }: { threadId: string }) {
-  const [messages, setMessages] = useState<Message[]>([]);
+export function ChatShell({ threadId, initialMessages }: { threadId: string; initialMessages?: StoredMessage[] }) {
+  const [messages, setMessages] = useState<Message[]>(() => initialMessages?.map(toMessage) ?? []);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(!initialMessages);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
+    // Parent already supplied this thread's history (or it's a brand-new thread).
+    if (initialMessages) return;
     const loadMessages = async () => {
       setIsLoadingHistory(true);
       try {
         const res = await fetch(`/api/threads?threadId=${encodeURIComponent(threadId)}`);
         if (res.ok) {
           const data = await res.json();
-          if (data.messages?.length > 0) {
-            setMessages(data.messages.map((m: { id: string; role: string; content: string; sources: unknown }) => ({
-              id: m.id,
-              role: m.role as "user" | "assistant",
-              content: m.content,
-              sources: m.sources
-                ? typeof m.sources === "string" ? JSON.parse(m.sources) : m.sources
-                : [],
-            })));
-          } else {
-            setMessages([]);
-          }
+          setMessages((data.messages ?? []).map(toMessage));
         }
       } catch (e) {
         console.error("Failed to load messages:", e);
@@ -65,6 +74,7 @@ export function ChatShell({ threadId }: { threadId: string }) {
       }
     };
     loadMessages();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadId]);
 
   useEffect(() => {

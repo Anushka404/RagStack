@@ -6,10 +6,6 @@ export type ThreadMessage = {
 
 export type Thread = {
   threadId: string;
-  createdAt: number;
-  updatedAt: number;
   messages: ThreadMessage[];
   entities: string[];
-  lastDocumentRef: string | null;
-  lastRetrievalQuery: string | null;
 };

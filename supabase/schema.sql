@@ -7,6 +7,12 @@ create table if not exists documents (
   document_id text not null,
   file_name text not null,
   chunk_count int not null default 0,
+  status text not null default 'ready'
+    check (status in ('uploading', 'parsing', 'embedding', 'ready', 'failed')),
+  error text,
+  storage_path text,
+  file_size_bytes bigint,
+  processed_chunks int not null default 0,
   created_at timestamptz not null default now()
 );
 
@@ -54,3 +60,15 @@ create policy "own messages" on messages for all
   using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 create policy "own thread_entities" on thread_entities for all
   using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+
+-- Private Storage bucket for uploaded PDFs ({user_id}/{document_row_id}.pdf)
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('documents', 'documents', false, 52428800, array['application/pdf'])
+on conflict (id) do nothing;
+
+create policy "own pdfs select" on storage.objects for select to authenticated
+  using (bucket_id = 'documents' and (storage.foldername(name))[1] = (select auth.uid())::text);
+create policy "own pdfs insert" on storage.objects for insert to authenticated
+  with check (bucket_id = 'documents' and (storage.foldername(name))[1] = (select auth.uid())::text);
+create policy "own pdfs delete" on storage.objects for delete to authenticated
+  using (bucket_id = 'documents' and (storage.foldername(name))[1] = (select auth.uid())::text);
