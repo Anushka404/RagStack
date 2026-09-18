@@ -88,6 +88,7 @@ export async function POST(req: NextRequest) {
           controller.close();
           resolveAnswer(fullResponseText);
         } catch (error) {
+          console.error("Chat stream error:", error);
           resolveAnswer(null);
           controller.error(error);
         }

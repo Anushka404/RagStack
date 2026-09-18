@@ -32,10 +32,11 @@ An intelligent **AI-powered PDF assistant** that allows users to upload any docu
 
 ## ⚙️ Setup (all free tiers)
 
-1. **Gemini API key** (free): https://aistudio.google.com/apikey
-   _Or use OpenAI: set `LLM_PROVIDER=openai` and `OPENAI_API_KEY` (paid API credits; ChatGPT plans don't include API access)._
-2. **Pinecone** (free Starter): create a serverless index named `ragstack`, metric `cosine`,
-   dimension `3072` for Gemini (`gemini-embedding-001`) or `1536` for OpenAI (`text-embedding-3-small`).
+1. **OpenRouter API key** (free models): https://openrouter.ai/keys, with `LLM_PROVIDER=openrouter`.
+   Embeddings then use Pinecone's free `llama-text-embed-v2` with your Pinecone key.
+   _Alternatives: `LLM_PROVIDER=gemini` + `GOOGLE_API_KEY` (free tier), or `openai` + `OPENAI_API_KEY` (paid credits)._
+2. **Pinecone** (free Starter): create a serverless index (Custom settings, dense, metric `cosine`)
+   with dimension `1024` for Pinecone embeddings, `3072` for Gemini or `1536` for OpenAI.
 3. **Supabase** (free): create a project, open *SQL Editor*, run [`supabase/schema.sql`](supabase/schema.sql).
    For quick testing, turn off *Authentication → Sign In / Providers → Email → Confirm email*.
 4. Copy `.env.example` to `.env.local` and fill in the keys, then:

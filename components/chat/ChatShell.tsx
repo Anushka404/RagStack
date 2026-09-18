@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { SourceRef } from "@/types/chat";
 import { SourceList } from "./SourceList";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface Message {
   id: string;
@@ -168,14 +170,20 @@ export function ChatShell({ threadId, initialMessages }: { threadId: string; ini
 
             {/* Body */}
             <div className={`max-w-[72%] flex flex-col ${msg.role === "user" ? "items-end" : ""}`}>
-              <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap break-words ${
+              <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed break-words ${
                 msg.role === "user"
-                  ? "bg-[#4f6eff] text-white rounded-br-sm"
+                  ? "bg-[#4f6eff] text-white rounded-br-sm whitespace-pre-wrap"
                   : `bg-[#1e1e2a] border text-[#e8e8f0] rounded-bl-sm ${
                       msg.isStreaming ? "border-[#4f6eff]/30 shadow-[inset_0_0_0_1px_rgba(79,110,255,0.12)]" : "border-white/[0.07]"
                     }`
               }`}>
-                {msg.content || (msg.isStreaming ? (
+                {msg.content ? (
+                  msg.role === "assistant" ? (
+                    <div className="md">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                    </div>
+                  ) : msg.content
+                ) : (msg.isStreaming ? (
                   <span className="inline-flex items-center gap-1 h-4">
                     <span className="w-1.5 h-1.5 rounded-full bg-[#555570] typing-dot" />
                     <span className="w-1.5 h-1.5 rounded-full bg-[#555570] typing-dot" />
