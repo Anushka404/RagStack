@@ -51,7 +51,7 @@ export default function LoginPage() {
             </svg>
           </div>
           <span className="text-lg font-bold bg-gradient-to-br from-white to-[#a0a8ff] bg-clip-text text-transparent">
-            AskPDF
+            RAGStack
           </span>
         </div>
 
@@ -59,7 +59,7 @@ export default function LoginPage() {
           {mode === "signin" ? "Welcome back" : "Create your account"}
         </h2>
         <p className="text-sm text-[#8888aa] text-center mb-6">
-          {mode === "signin" ? "Sign in to continue" : "Sign up to start asking your PDFs"}
+          {mode === "signin" ? "Sign in to continue" : "Sign up to build your knowledge base"}
         </p>
 
         {error && (

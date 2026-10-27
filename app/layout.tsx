@@ -5,8 +5,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "AskPDF — Chat with your documents",
-  description: "Upload a PDF and ask questions, powered by AI and grounded retrieval.",
+  title: "RAGStack: context engineering for your documents",
+  description: "Upload documents into collections and ask grounded questions with source-linked answers.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

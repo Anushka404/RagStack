@@ -52,19 +52,28 @@ class PineconeInferenceEmbeddings extends Embeddings {
 const embeddingProvider =
   process.env.EMBEDDING_PROVIDER || (llmProvider === "openrouter" ? "pinecone" : llmProvider);
 
+const DEFAULT_EMBEDDING_MODELS: Record<string, string> = {
+  pinecone: "llama-text-embed-v2",
+  gemini: "gemini-embedding-001",
+  openai: "text-embedding-3-small",
+};
+
+/** The embedding model in use, recorded on each document. */
+export const embeddingModelName =
+  process.env.EMBEDDING_MODEL || DEFAULT_EMBEDDING_MODELS[embeddingProvider] || DEFAULT_EMBEDDING_MODELS.openai;
+
 function makeEmbeddings(): Embeddings {
-  const model = process.env.EMBEDDING_MODEL;
   if (embeddingProvider === "pinecone") {
-    return new PineconeInferenceEmbeddings(model || "llama-text-embed-v2");
+    return new PineconeInferenceEmbeddings(embeddingModelName);
   }
   if (embeddingProvider === "gemini") {
     return new GoogleGenerativeAIEmbeddings({
-      model: model || "gemini-embedding-001",
+      model: embeddingModelName,
       apiKey: process.env.GOOGLE_API_KEY,
     });
   }
   return new OpenAIEmbeddings({
-    model: model || "text-embedding-3-small",
+    model: embeddingModelName,
     openAIApiKey: process.env.OPENAI_API_KEY,
   });
 }

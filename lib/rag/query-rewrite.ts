@@ -3,7 +3,9 @@ import { REWRITE_PROMPT, ENTITY_EXTRACT_PROMPT } from "@/lib/ai/prompts";
 import { HumanMessage } from "@langchain/core/messages";
 import { Thread } from "@/types/memory";
 
-const VAGUE_PRONOUNS = ["his", "her", "their", "them", "he", "she", "it", "this", "that"];
+// Person pronouns only: "it/this/that" usually mean the document ("summarize this"), and
+// rewriting them with the remembered person/org entity derails retrieval.
+const VAGUE_PRONOUNS = ["his", "her", "their", "them", "he", "she"];
 
 /**
  * Detects whether a query contains vague pronouns that need resolution.

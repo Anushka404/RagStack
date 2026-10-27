@@ -11,6 +11,9 @@ export function attachMetadata(
     fileName: string;
     uploadedAt: string;
     userId: string;
+    collection: string;
+    year: number | null;
+    tags: string[];
   }
 ): Document<ChunkMetadata>[] {
   const totalChunks = chunks.length;
@@ -31,6 +34,10 @@ export function attachMetadata(
       uploadedAt: opts.uploadedAt,
       textPreview,
       userId: opts.userId,
+      // Filterable in Pinecone; null year / empty tags are dropped before upsert.
+      collection: opts.collection,
+      year: opts.year,
+      tags: opts.tags,
     };
 
     return new Document({ pageContent: chunk.pageContent, metadata });

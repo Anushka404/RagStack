@@ -3,6 +3,7 @@ import { PineconeStore } from "@langchain/pinecone";
 import { Document } from "@langchain/core/documents";
 import { getPineconeClient, PINECONE_INDEX_NAME } from "./client";
 import { embeddings } from "@/lib/ai/embeddings";
+import { ChunkMetadata } from "@/types/rag";
 
 /**
  * Returns a LangChain PineconeStore scoped to the user's namespace.
@@ -23,7 +24,7 @@ export function chunkVectorId(documentId: string, chunkIndex: number) {
  * so re-running a batch after a timeout overwrites instead of duplicating.
  */
 export async function upsertChunks(
-  docs: Document<{ documentId: string; chunkIndex: number }>[],
+  docs: Document<ChunkMetadata>[],
   namespace: string
 ): Promise<void> {
   if (docs.length === 0) return;

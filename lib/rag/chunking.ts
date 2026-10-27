@@ -2,9 +2,12 @@ import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { Document } from "@langchain/core/documents";
 import { cleanPDFText } from "@/lib/pdf/parse";
 
+export const CHUNK_SIZE = 1000;
+export const CHUNK_OVERLAP = 150;
+
 const splitter = new RecursiveCharacterTextSplitter({
-  chunkSize: 1000,
-  chunkOverlap: 150,
+  chunkSize: CHUNK_SIZE,
+  chunkOverlap: CHUNK_OVERLAP,
 });
 
 /**

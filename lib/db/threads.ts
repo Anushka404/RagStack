@@ -29,7 +29,7 @@ export async function ensureThread(
 export async function getUserThreads(supabase: SupabaseClient, userId: string) {
   const { data, error } = await supabase
     .from("threads")
-    .select("id, updated_at, documents(id, file_name, chunk_count)")
+    .select("id, title, updated_at, documents(id, file_name, chunk_count)")
     .eq("user_id", userId)
     .order("updated_at", { ascending: false })
     .limit(20);
@@ -53,11 +53,6 @@ export async function updateThreadDocument(
   if (error) throw error;
 }
 
-export async function deleteThread(supabase: SupabaseClient, userId: string, threadId: string) {
-  const { error } = await supabase.from("threads").delete().eq("user_id", userId).eq("id", threadId);
-  if (error) throw error;
-}
-
 export async function saveEntity(
   supabase: SupabaseClient,
   userId: string,
@@ -72,15 +67,18 @@ export async function saveEntity(
   if (error) throw error;
 }
 
-export async function getThreadEntities(supabase: SupabaseClient, userId: string, threadId: string) {
-  const { data, error } = await supabase
-    .from("thread_entities")
-    .select("entity")
+/** Names a chat after its first question; later questions leave the title alone. */
+export async function setThreadTitleIfEmpty(
+  supabase: SupabaseClient,
+  userId: string,
+  threadId: string,
+  title: string
+) {
+  const { error } = await supabase
+    .from("threads")
+    .update({ title: title.trim().slice(0, 60) })
     .eq("user_id", userId)
-    .eq("thread_id", threadId)
-    .order("created_at", { ascending: false })
-    .limit(5);
-
+    .eq("id", threadId)
+    .is("title", null);
   if (error) throw error;
-  return (data || []).map((e) => e.entity);
 }

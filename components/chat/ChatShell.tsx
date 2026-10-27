@@ -2,7 +2,10 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { SourceRef } from "@/types/chat";
+import { RetrievalFilters, RetrievalTrace } from "@/types/rag";
 import { SourceList } from "./SourceList";
+import { TraceDetails } from "./TraceDetails";
+import { citationComponents, linkCitations, VerificationSummary } from "./Citations";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -11,6 +14,7 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   sources?: SourceRef[];
+  trace?: RetrievalTrace;
   isStreaming?: boolean;
 }
 
@@ -19,6 +23,7 @@ export interface StoredMessage {
   role: string;
   content: string;
   sources: unknown;
+  trace?: unknown;
 }
 
 function toMessage(m: StoredMessage): Message {
@@ -29,28 +34,34 @@ function toMessage(m: StoredMessage): Message {
     sources: m.sources
       ? typeof m.sources === "string" ? JSON.parse(m.sources) : (m.sources as SourceRef[])
       : [],
+    trace: (m.trace as RetrievalTrace | null) ?? undefined,
   };
 }
 
-const SOURCES_START = "__SOURCES__";
-const SOURCES_END = "__END_SOURCES__";
+// After the answer text the server appends JSON blocks: __META__{...}__END_META__
+// (sources and trace), then __VERIFY__{...}__END_VERIFY__ (the claim check).
+const BLOCK_RE = /\s*__(META|VERIFY)__([\s\S]*?)__END_\1__/g;
 
-function extractSources(text: string): { cleanText: string; sources: SourceRef[] } {
-  const startIdx = text.indexOf(SOURCES_START);
-  if (startIdx === -1) return { cleanText: text, sources: [] };
-  const endIdx = text.indexOf(SOURCES_END, startIdx);
-  if (endIdx === -1) return { cleanText: text, sources: [] };
-  try {
-    return {
-      cleanText: text.slice(0, startIdx).trimEnd(),
-      sources: JSON.parse(text.slice(startIdx + SOURCES_START.length, endIdx)) as SourceRef[],
-    };
-  } catch {
-    return { cleanText: text, sources: [] };
-  }
+/** Splits the streamed body into answer text and any complete JSON blocks. */
+function parseStream(text: string): { cleanText: string; blocks: Record<string, unknown> } {
+  const blocks: Record<string, unknown> = {};
+  const rest = text.replace(BLOCK_RE, (_, name: string, json: string) => {
+    try { blocks[name] = JSON.parse(json); } catch { /* ignore a malformed block */ }
+    return "";
+  });
+  // Hide a block that has started arriving but isn't complete yet.
+  const open = rest.search(/__(META|VERIFY)__/);
+  return { cleanText: (open === -1 ? rest : rest.slice(0, open)).trimEnd(), blocks };
 }
 
-export function ChatShell({ threadId, initialMessages }: { threadId: string; initialMessages?: StoredMessage[] }) {
+export function ChatShell({ threadId, initialMessages, filters, onSent }: {
+  threadId: string;
+  initialMessages?: StoredMessage[];
+  /** Restricts retrieval for every question sent from here. */
+  filters?: RetrievalFilters;
+  /** Called with the question once the server has accepted it (the thread now exists). */
+  onSent?: (text: string) => void;
+}) {
   const [messages, setMessages] = useState<Message[]>(() => initialMessages?.map(toMessage) ?? []);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -98,36 +109,48 @@ export function ChatShell({ threadId, initialMessages }: { threadId: string; ini
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ threadId, message: text.trim() }),
+        body: JSON.stringify({ threadId, message: text.trim(), filters }),
       });
-      if (!res.ok || !res.body) throw new Error(`API error: ${res.status}`);
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Request failed (${res.status})`);
+      }
+      onSent?.(text.trim());
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let accumulated = "";
 
+      const apply = (isStreaming: boolean) => {
+        const { cleanText, blocks } = parseStream(accumulated);
+        const meta = blocks.META as { sources?: SourceRef[]; trace?: RetrievalTrace } | undefined;
+        const verify = blocks.VERIFY as { verification: RetrievalTrace["verification"]; ms: number } | undefined;
+        const trace = meta?.trace && verify
+          ? { ...meta.trace, verification: verify.verification, timings: { ...meta.trace.timings, verify: verify.ms } }
+          : meta?.trace;
+        setMessages((prev) => prev.map((m) => m.id === asstId
+          ? { ...m, content: cleanText, isStreaming, ...(meta ? { sources: meta.sources ?? [], trace } : {}) }
+          : m
+        ));
+      };
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         accumulated += decoder.decode(value, { stream: true });
-        const displayText = accumulated.includes(SOURCES_START)
-          ? accumulated.slice(0, accumulated.indexOf(SOURCES_START)).trimEnd()
-          : accumulated;
-        setMessages((prev) => prev.map((m) => m.id === asstId ? { ...m, content: displayText } : m));
+        apply(true);
       }
-
-      const { cleanText, sources } = extractSources(accumulated);
-      setMessages((prev) => prev.map((m) => m.id === asstId ? { ...m, content: cleanText, sources, isStreaming: false } : m));
-    } catch {
+      apply(false);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : "Unknown error";
       setMessages((prev) => prev.map((m) => m.id === asstId
-        ? { ...m, content: "Sorry, something went wrong. Please try again.", isStreaming: false }
+        ? { ...m, content: `⚠️ Error: ${reason}`, isStreaming: false }
         : m
       ));
     } finally {
       setIsLoading(false);
       inputRef.current?.focus();
     }
-  }, [threadId, isLoading]);
+  }, [threadId, isLoading, onSent, filters]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(input); }
@@ -152,8 +175,8 @@ export function ChatShell({ threadId, initialMessages }: { threadId: string; ini
                 <line x1="16" y1="17" x2="8" y2="17"/>
               </svg>
             </div>
-            <p className="text-base font-semibold text-[#e8e8f0]">Upload a PDF to get started</p>
-            <p className="text-sm text-[#8888aa] max-w-xs">Ask any question about your document and I&apos;ll find the answer.</p>
+            <p className="text-base font-semibold text-[#e8e8f0]">Ask your knowledge base</p>
+            <p className="text-sm text-[#8888aa] max-w-xs">Answers come only from your uploaded documents, with the sources they used.</p>
           </div>
         ) : null}
 
@@ -180,7 +203,9 @@ export function ChatShell({ threadId, initialMessages }: { threadId: string; ini
                 {msg.content ? (
                   msg.role === "assistant" ? (
                     <div className="md">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={citationComponents(msg.trace)}>
+                        {linkCitations(msg.content)}
+                      </ReactMarkdown>
                     </div>
                   ) : msg.content
                 ) : (msg.isStreaming ? (
@@ -191,9 +216,13 @@ export function ChatShell({ threadId, initialMessages }: { threadId: string; ini
                   </span>
                 ) : "")}
               </div>
-              {msg.role === "assistant" && !msg.isStreaming && msg.sources && msg.sources.length > 0 && (
+              {msg.role === "assistant" && msg.sources && msg.sources.length > 0 && (
                 <SourceList sources={msg.sources} />
               )}
+              {msg.role === "assistant" && msg.trace && (
+                <VerificationSummary verification={msg.trace.verification} pending={!!msg.isStreaming} />
+              )}
+              {msg.role === "assistant" && msg.trace && <TraceDetails trace={msg.trace} />}
             </div>
           </div>
         ))}
@@ -207,7 +236,7 @@ export function ChatShell({ threadId, initialMessages }: { threadId: string; ini
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Ask a question about your document… (Enter to send)"
+          placeholder="Ask a question about your documents… (Enter to send)"
           rows={1}
           disabled={isLoading}
           className="flex-1 bg-[#1e1e2a] border border-white/[0.07] rounded-2xl px-4 py-3 text-sm text-[#e8e8f0] placeholder:text-[#555570] resize-none min-h-[46px] max-h-40 overflow-y-auto outline-none transition focus:border-[#4f6eff] focus:ring-2 focus:ring-[#4f6eff]/25 disabled:opacity-50 disabled:cursor-not-allowed font-[inherit]"

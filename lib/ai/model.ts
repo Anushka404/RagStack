@@ -12,19 +12,29 @@ export const llmProvider = process.env.LLM_PROVIDER || "openai";
 // OpenRouter free models get rate-limited upstream at random, so it gets a comma-separated
 // fallback list (max 3): OpenRouter tries the next one when a model is busy.
 // "openrouter/free" is OpenRouter's router that picks any available free model.
+// Free ids get retired without notice: check https://openrouter.ai/models?max_price=0 (last checked 2026-10-27).
 const OPENROUTER_FREE =
-  "deepseek/deepseek-v4-flash-0731:free,nvidia/nemotron-3-super-120b-a12b:free,openrouter/free";
+  "nvidia/nemotron-3.5-super-vl:free,nvidia/nemotron-3.5-lightning:free,openrouter/free";
 
-const DEFAULT_MODELS: Record<string, { chat: string; utility: string }> = {
-  openrouter: { chat: OPENROUTER_FREE, utility: OPENROUTER_FREE },
-  gemini: { chat: "gemini-2.5-flash", utility: "gemini-2.5-flash-lite" },
-  openai: { chat: "gpt-4o-mini", utility: "gpt-4o-mini" },
+// LangChain retries 429s 6 times with backoff (~1 min), so a spent daily quota would hang
+// past maxDuration instead of reaching the user as an error.
+const DEFAULT_MAX_RETRIES = 2;
+
+// Free models that read images, for OCR of scanned pages. "openrouter/free" is left out:
+// it may route to a text-only model. Nemotron VL read cursive handwriting near-perfectly in testing.
+const OPENROUTER_FREE_VISION =
+  "nvidia/nemotron-3.5-super-vl:free,google/gemma-4-31b-it:free,google/gemma-4-26b-a4b-it:free";
+
+const DEFAULT_MODELS: Record<string, { chat: string; utility: string; ocr: string }> = {
+  openrouter: { chat: OPENROUTER_FREE, utility: OPENROUTER_FREE, ocr: OPENROUTER_FREE_VISION },
+  gemini: { chat: "gemini-2.5-flash", utility: "gemini-2.5-flash-lite", ocr: "gemini-2.5-flash" },
+  openai: { chat: "gpt-4o-mini", utility: "gpt-4o-mini", ocr: "gpt-4o-mini" },
 };
 const defaults = DEFAULT_MODELS[llmProvider] ?? DEFAULT_MODELS.openai;
 
-function makeModel(model: string, temperature: number) {
+function makeModel(model: string, temperature: number, maxRetries = DEFAULT_MAX_RETRIES) {
   if (llmProvider === "gemini") {
-    return new ChatGoogleGenerativeAI({ model, temperature, apiKey: process.env.GOOGLE_API_KEY });
+    return new ChatGoogleGenerativeAI({ model, temperature, maxRetries, apiKey: process.env.GOOGLE_API_KEY });
   }
   if (llmProvider === "openrouter") {
     const models = model.split(",").map((m) => m.trim()).filter(Boolean);
@@ -36,16 +46,26 @@ function makeModel(model: string, temperature: number) {
     return new ChatOpenAI({
       model: models[0],
       temperature,
+      maxRetries,
       openAIApiKey: process.env.OPENROUTER_API_KEY,
       configuration: { baseURL: "https://openrouter.ai/api/v1" },
       modelKwargs: { models },
     });
   }
-  return new ChatOpenAI({ model, temperature, openAIApiKey: process.env.OPENAI_API_KEY });
+  return new ChatOpenAI({ model, temperature, maxRetries, openAIApiKey: process.env.OPENAI_API_KEY });
 }
 
 /** Final answer generation. */
 export const chatModel = makeModel(process.env.CHAT_MODEL || defaults.chat, 0.4);
+/** Configured primary chat model, used when the provider doesn't report which one answered. */
+export const chatModelName = (process.env.CHAT_MODEL || defaults.chat).split(",")[0].trim();
 
 /** Query rewriting and entity extraction. */
 export const utilityModel = makeModel(process.env.UTILITY_MODEL || defaults.utility, 0.2);
+
+/**
+ * Vision model that transcribes scanned pages (one call per page). No in-call retries:
+ * a failed page is retried by the next ingestion step, which keeps each step under 60 s.
+ */
+export const ocrModel = makeModel(process.env.OCR_MODEL || defaults.ocr, 0, 0);
+export const ocrModelName = (process.env.OCR_MODEL || defaults.ocr).split(",")[0].trim();

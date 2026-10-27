@@ -1,6 +1,7 @@
 "use client";
 
 import { DocumentRow } from "@/types/documents";
+import { plural } from "@/lib/client/format";
 
 interface DocumentListProps {
   documents: DocumentRow[];
@@ -13,13 +14,13 @@ interface DocumentListProps {
 function statusLine(doc: DocumentRow): string {
   switch (doc.status) {
     case "uploading": return "Queued…";
-    case "parsing": return "Reading PDF…";
+    case "parsing": return doc.stats?.ocr ? `OCR ${doc.stats.ocr.done}/${doc.stats.ocr.pages} pages…` : "Reading file…";
     case "embedding":
       return doc.chunk_count > 0
         ? `Embedding ${doc.processed_chunks}/${doc.chunk_count}…`
         : "Embedding…";
     case "failed": return doc.error || "Processing failed";
-    default: return `${doc.chunk_count} chunks indexed`;
+    default: return `${plural(doc.chunk_count, "chunk")} indexed`;
   }
 }
 
