@@ -95,13 +95,30 @@ finishes in the background, and an interrupted upload resumes where it stopped.
 7. **Generate:** send context + question to the LLM with strict "answer only from this" rules; stream the answer back.
 8. **Save:** store the answer, its sources and the trace with the chat.
 
-## 5. Tech stack, one line each
+## 5. Tech stack and models
 
 - **Next.js + React + Tailwind:** the web app and its API routes
 - **Supabase:** login, Postgres database (documents, chunks, chats), file storage, full-text keyword search
 - **Pinecone:** vector database, plus its free hosted embedding model and reranker
 - **OpenRouter:** one API for many LLMs; we use free Nemotron VL with Qwen 3.7 Flash as a fallback
 - **LangChain:** plumbing between the app and the models
+
+| Job | Model | Key settings |
+|---|---|---|
+| Writing answers | Nemotron 3.5 Super VL (free), fallback Qwen 3.7 Flash | temperature 0.4, thinking off, streamed |
+| OCR of scanned pages | Same two (both read images) | 3 pages at a time, 40 s and 2,048-token limit per page, looping reads redone on Qwen |
+| Follow-up rewriting, chat memory | Same two | temperature 0.2 |
+| Embeddings | `llama-text-embed-v2` (Pinecone) | 1024 numbers per chunk, cosine similarity |
+| Reranking | `bge-reranker-v2-m3` (Pinecone) | top 20 in, best 6 out |
+| Keyword search | Postgres full-text search | terms OR-ed, ranked by `ts_rank_cd` |
+
+**The key numbers to remember:** chunks of 1,000 characters with 150 overlap; 20 candidates from each
+search; fusion score 1/(60 + rank); 6 chunks kept after reranking; a context budget of about 3,000 tokens;
+a page counts as scanned below 8 distinct words.
+
+**Why these models:** in our tests Tesseract couldn't read cursive (30/100); free Nemotron with thinking
+off read a handwritten page in 2.3 s; of the paid models, Qwen was the most faithful, DeepSeek invented a
+note and Gemini shifted a table column. [FLOW.md](FLOW.md) explains every step's logic in detail.
 
 ---
 
