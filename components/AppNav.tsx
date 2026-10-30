@@ -4,11 +4,13 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { DEMO_STAGE } from "@/lib/stage";
 
 const LINKS = [
   { href: "/", label: "Chat" },
   { href: "/knowledge", label: "Knowledge base" },
-  { href: "/evaluation", label: "Evaluation" },
+  // The Evaluation page is part of demo stage 3.
+  ...(DEMO_STAGE >= 3 ? [{ href: "/evaluation", label: "Evaluation" }] : []),
 ];
 
 /** Top bar shared by every signed-in page: brand, page links, account. */

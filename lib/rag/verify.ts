@@ -2,9 +2,13 @@ import { HumanMessage } from "@langchain/core/messages";
 import { utilityModel } from "@/lib/ai/model";
 import { VERIFY_PROMPT } from "@/lib/ai/prompts";
 import { parseClaims, Verification } from "./claims";
+import { DEMO_STAGE } from "@/lib/stage";
 
-/** Set VERIFY_ANSWERS=false to skip the extra LLM call per answer (saves free-tier quota). */
-export const verificationEnabled = process.env.VERIFY_ANSWERS !== "false";
+/**
+ * Claim checking is part of demo stage 3. Set VERIFY_ANSWERS=false to skip the extra LLM
+ * call per answer (saves free-tier quota).
+ */
+export const verificationEnabled = DEMO_STAGE >= 3 && process.env.VERIFY_ANSWERS !== "false";
 
 /**
  * Answer verification: a second LLM pass checks each claim of the answer against

@@ -29,9 +29,10 @@ Built with **Next.js**, **LangChain**, **Pinecone** (vectors, embeddings, rerank
 
 ---
 
-## Setup (all free tiers)
+## Setup (free tiers, plus a few cents of OpenRouter credit)
 
-1. **OpenRouter API key** (free models): https://openrouter.ai/keys, with `LLM_PROVIDER=openrouter`.
+1. **OpenRouter API key**: https://openrouter.ai/keys, with `LLM_PROVIDER=openrouter`. The default models are free
+   Nemotron VL with thinking off, falling back to Qwen 3.7 Flash (about $0.0001 a call) when the free pool is busy.
    Embeddings and reranking then use Pinecone's free hosted models with your Pinecone key.
    _Alternatives: `LLM_PROVIDER=gemini` + `GOOGLE_API_KEY`, or `openai` + `OPENAI_API_KEY`. With either, set
    `EMBEDDING_PROVIDER=pinecone` to keep the 1024-dimension index._
@@ -56,7 +57,8 @@ node --experimental-strip-types scripts/check-rag.mts
 
 ## Free-tier limits worth knowing
 
-- OpenRouter free models are capped per day, and each question uses 2–4 calls (answer, claim check,
+- OpenRouter free models are capped at 50 requests a day (1,000 once you have bought $10 of credit) and 20 a minute;
+  the paid Qwen fallback takes over when they run out. Each question uses 2–4 calls (answer, claim check,
   entity memory, sometimes a rewrite). Set `VERIFY_ANSWERS=false` to drop the claim check. Free model ids
   also get retired; pick a current one from https://openrouter.ai/models?max_price=0 for `CHAT_MODEL`.
 - Chat is limited to 10 questions per user per minute to protect that quota.

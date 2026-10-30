@@ -7,6 +7,7 @@ import { AppNav } from "@/components/AppNav";
 import { UploadDialog } from "@/components/upload/UploadDialog";
 import { driveProcessing, IN_PROGRESS } from "@/lib/client/processing";
 import { formatBytes } from "@/lib/client/format";
+import { DEMO_STAGE } from "@/lib/stage";
 import type { DocumentRow } from "@/types/documents";
 import type { RetrievalFilters } from "@/types/rag";
 
@@ -257,7 +258,8 @@ export default function Home() {
       <main className="flex-1 flex flex-col overflow-hidden">
         <header className="flex flex-wrap items-center gap-x-4 gap-y-2 px-7 py-3 border-b border-white/[0.07] bg-[#16161e] flex-shrink-0">
           <h1 className="text-[17px] font-semibold text-[#e8e8f0] tracking-tight">Ask your knowledge base</h1>
-          <div className="ml-auto flex flex-wrap items-center gap-2" role="group" aria-label="Search filters">
+          {/* Filters are the namespace router, part of demo stage 2. */}
+          {DEMO_STAGE >= 2 && <div className="ml-auto flex flex-wrap items-center gap-2" role="group" aria-label="Search filters">
             <span className="text-[11px] text-[#555570]">Search in</span>
             <select aria-label="Collection" className={selectClass} value={filter.collection}
               onChange={(e) => setFilter({ collection: e.target.value, year: "", docId: "" })}>
@@ -274,7 +276,7 @@ export default function Home() {
               <option value="">All documents</option>
               {docOptions.map((d) => <option key={d.id} value={d.document_id}>{d.file_name}</option>)}
             </select>
-          </div>
+          </div>}
         </header>
         {initialLoaded ? (
           <ChatShell

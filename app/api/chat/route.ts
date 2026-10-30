@@ -5,6 +5,7 @@ import { rewriteQuery, extractEntity } from "@/lib/rag/query-rewrite";
 import { streamAnswer } from "@/lib/rag/answer";
 import { assembleContext } from "@/lib/rag/context";
 import { listUserDocuments } from "@/lib/db/documents";
+import { DEMO_STAGE } from "@/lib/stage";
 import { isNotFoundAnswer } from "@/lib/ai/prompts";
 import { loadThreadMemory } from "@/lib/rag/memory";
 import { verificationEnabled, verifyAnswer } from "@/lib/rag/verify";
@@ -65,10 +66,12 @@ export async function POST(req: NextRequest) {
     const rewrittenAt = Date.now();
 
     const ready = documents.filter((d) => d.status === "ready");
+    // Stage 1 presents plain semantic search; hybrid retrieval and reranking arrive in stage 2.
+    const contextEngineering = DEMO_STAGE >= 2;
     const retrieval = await hybridRetrieve(supabase, user.id, retrievalQuery, filters, {
       years: [...new Set(ready.map((d) => d.year).filter((y): y is number => y !== null))],
       collections: [...new Set(ready.map((d) => d.collection))],
-    });
+    }, contextEngineering ? "full" : "semantic");
     const { context, used, dropped } = assembleContext(retrieval.docs);
     const retrievedAt = Date.now();
 
@@ -114,9 +117,9 @@ export async function POST(req: NextRequest) {
             query: message,
             ...(wasRewritten ? { retrievalQuery } : {}),
             filters: retrieval.filters,
-            detected: retrieval.plan,
-            searches: retrieval.searches,
-            reranker: retrieval.reranker,
+            ...(contextEngineering
+              ? { detected: retrieval.plan, searches: retrieval.searches, reranker: retrieval.reranker }
+              : {}),
             chunks: retrieval.docs.map((d) => ({
               fileName: d.metadata.fileName,
               pageNumber: d.metadata.pageNumber,
@@ -131,7 +134,7 @@ export async function POST(req: NextRequest) {
             timings: {
               prepare: rewrittenAt - startedAt,
               search: retrieval.timings.search,
-              rerank: retrieval.timings.rerank,
+              ...(contextEngineering ? { rerank: retrieval.timings.rerank } : {}),
               generate: answeredAt - retrievedAt,
               total: answeredAt - startedAt,
             },

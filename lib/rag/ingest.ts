@@ -1,7 +1,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { Document } from "@langchain/core/documents";
 import { loadDocument } from "@/lib/pdf/loader";
-import { cleanPDFText, removeRepeatedLines } from "@/lib/pdf/parse";
+import { looksScanned, removeRepeatedLines } from "@/lib/pdf/parse";
 import { openPdf, pageImageJpeg } from "@/lib/pdf/pdfjs";
 import { ocrPageImage } from "@/lib/pdf/ocr";
 import { chunkDocuments, CHUNK_OVERLAP, CHUNK_SIZE } from "./chunking";
@@ -18,8 +18,6 @@ const BATCH_SIZE = 96;
 /** Stop starting new batches after this long, leaving headroom under maxDuration (60s). */
 const TIME_BUDGET_MS = 40_000;
 
-/** PDF pages with less text than this are treated as scans and sent to OCR. */
-const MIN_PAGE_TEXT = 20;
 /** Pages read in parallel; free vision models are rate-limited, so keep it small. */
 const OCR_CONCURRENCY = 3;
 /** Start another OCR batch only this early in a step: a batch can take up to the 40 s OCR timeout. */
@@ -42,7 +40,7 @@ async function ocrScannedPages(
   pageDocs: Document[],
   startedAt: number
 ): Promise<DocumentStats["ocr"]> {
-  const scanned = pageDocs.filter((p) => cleanPDFText(p.pageContent).length < MIN_PAGE_TEXT);
+  const scanned = pageDocs.filter((p) => looksScanned(p.pageContent));
   if (!scanned.length) return undefined;
 
   const cache = await getOcrCache(supabase, userId, doc.id);
@@ -58,7 +56,8 @@ async function ocrScannedPages(
         const results = await Promise.allSettled(
           batch.map(async (p) => {
             const jpeg = await pageImageJpeg(await pdf.getPage(pageNumber(p)));
-            return jpeg ? ocrPageImage(jpeg) : null; // no image on the page: nothing to read
+            // No image on the page: nothing to read. A page that failed before goes to the fallback model.
+            return jpeg ? ocrPageImage(jpeg, { retry: (cache.attempts[String(pageNumber(p))] ?? 0) > 0 }) : null;
           })
         );
         let failure: string | null = null;
@@ -97,7 +96,8 @@ async function ocrScannedPages(
   }
 
   const ocr = { pages: scanned.length, done: scanned.filter(isRead).length, model: cache.model ?? ocrModelName };
-  if (ocr.done === ocr.pages) scanned.forEach((p) => (p.pageContent = cache.pages[String(pageNumber(p))]));
+  // A page OCR found nothing on (no image, or a blank one) keeps its own text, e.g. a title.
+  if (ocr.done === ocr.pages) scanned.forEach((p) => (p.pageContent = cache.pages[String(pageNumber(p))] || p.pageContent));
   return ocr;
 }
 

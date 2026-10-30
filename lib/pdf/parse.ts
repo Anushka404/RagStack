@@ -27,17 +27,41 @@ export function parseCsv(text: string): string[][] {
   return rows.map((r) => r.map((f) => f.trim()));
 }
 
+/**
+ * Shortens runaway repeats in OCR output ("- - - - …" ×1000 becomes "- - - "): a model can
+ * loop on a dashed line until it hits its token cap, and the text before the loop is still good.
+ * A 1–4 character unit repeated 10+ times is kept 3 times; shorter runs (truth tables) stay.
+ */
+export function collapseRepeats(text: string): string {
+  return text.replace(/(.{1,4}?)\1{9,}/g, "$1$1$1");
+}
+
+/** Distinct words below which a PDF page's text layer is treated as a scan's watermark or title. */
+const MIN_DISTINCT_WORDS = 8;
+
+/**
+ * True when a page's text layer is too thin to be its content, so the page should be
+ * OCR-ed. Counts distinct words rather than characters: scanned notes often carry a
+ * tiled watermark ("Multi Atoms" ×12 is 135 characters but 2 words).
+ */
+export function looksScanned(text: string): boolean {
+  return new Set(text.toLowerCase().match(/[a-z]{2,}/g) ?? []).size < MIN_DISTINCT_WORDS;
+}
+
 /** Lines near the top or bottom of a page that are checked for header/footer repeats. */
 const EDGE_LINES = 3;
+/** Lines with fewer letters than this (a lone "}" or "1.") are never treated as headers. */
+const MIN_HEADER_LETTERS = 3;
 
 /**
  * Drops running headers and footers: lines among the first/last few of a page that
- * recur on at least half the pages. Digits are ignored when comparing, so
- * "Page 3" and "Page 4" count as the same footer. Needs 3+ pages to judge.
+ * recur on at least half the pages. Only letters are compared, so "Page 3" matches
+ * "Page 4", and OCR's varying "DATE [ ] [ ]" / "DATE □ □ □" count as one header.
+ * Needs 3+ pages to judge.
  */
 export function removeRepeatedLines(pages: string[]): { pages: string[]; removed: number } {
   if (pages.length < 3) return { pages, removed: 0 };
-  const norm = (line: string) => line.trim().toLowerCase().replace(/\d+/g, "#");
+  const norm = (line: string) => line.toLowerCase().replace(/[^a-z]+/g, "");
   const edgeIndexes = (lines: string[]) => {
     const filled = lines.flatMap((l, i) => (l.trim() ? [i] : []));
     // On short pages the top and bottom windows would overlap the body; cap each at a third.
@@ -52,7 +76,14 @@ export function removeRepeatedLines(pages: string[]): { pages: string[]; removed
     seen.forEach((k) => pageCount.set(k, (pageCount.get(k) ?? 0) + 1));
   }
   const minPages = Math.ceil(pages.length / 2);
-  const repeated = new Set([...pageCount].filter(([, n]) => n >= minPages).map(([k]) => k));
+  const repeated = new Set(
+    [...pageCount].filter(([k, n]) => n >= minPages && k.length >= MIN_HEADER_LETTERS).map(([k]) => k)
+  );
+
+  // OCR sometimes splits a footer ("Red Wings" / "PAGE") that it usually writes as one
+  // line, so a piece of a repeated line counts too.
+  const isRepeated = (key: string) =>
+    key.length >= MIN_HEADER_LETTERS && [...repeated].some((r) => r === key || r.includes(key));
 
   let removed = 0;
   const cleaned = pages.map((page) => {
@@ -60,7 +91,7 @@ export function removeRepeatedLines(pages: string[]): { pages: string[]; removed
     const edges = edgeIndexes(lines);
     return lines
       .filter((line, i) => {
-        const drop = edges.has(i) && repeated.has(norm(line));
+        const drop = edges.has(i) && isRepeated(norm(line));
         if (drop) removed++;
         return !drop;
       })

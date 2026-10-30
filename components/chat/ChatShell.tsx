@@ -6,6 +6,7 @@ import { RetrievalFilters, RetrievalTrace } from "@/types/rag";
 import { SourceList } from "./SourceList";
 import { TraceDetails } from "./TraceDetails";
 import { citationComponents, linkCitations, VerificationSummary } from "./Citations";
+import { DEMO_STAGE } from "@/lib/stage";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -219,7 +220,7 @@ export function ChatShell({ threadId, initialMessages, filters, onSent }: {
               {msg.role === "assistant" && msg.sources && msg.sources.length > 0 && (
                 <SourceList sources={msg.sources} />
               )}
-              {msg.role === "assistant" && msg.trace && (
+              {DEMO_STAGE >= 3 && msg.role === "assistant" && msg.trace && (
                 <VerificationSummary verification={msg.trace.verification} pending={!!msg.isStreaming} />
               )}
               {msg.role === "assistant" && msg.trace && <TraceDetails trace={msg.trace} />}

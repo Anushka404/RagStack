@@ -66,7 +66,8 @@ export async function hybridRetrieve(
       ]);
       const fused = reciprocalRankFusion([dense, keyword])
         .slice(0, RERANK_CANDIDATES)
-        .map((d) => ({ ...d, signals: { ...d.signals, search: g.label } }));
+        // Semantic-only mode shows the cosine similarity, not a fusion score of a single list.
+        .map((d) => ({ ...d, score: mode === "semantic" ? d.signals.denseScore ?? d.score : d.score, signals: { ...d.signals, search: g.label } }));
       return { label: g.label, dense: dense.length, keyword: keyword.length, fused };
     })
   );

@@ -7,6 +7,11 @@ const OCR_IMAGE_MAX_PX = 1600;
 async function loadPdfjs() {
   const { default: pdfjs } = await import("pdf-parse/lib/pdf.js/v1.10.100/build/pdf.js");
   pdfjs.disableWorker = true;
+  // Reading a page's images also loads its fonts, which pdf.js would install through the
+  // browser's `document`; on the server that throws inside a callback and kills the process.
+  // This build reads settings from a global PDFJS object, not from the module export.
+  const settings = (globalThis as { PDFJS?: { disableFontFace?: boolean } }).PDFJS;
+  if (settings) settings.disableFontFace = true;
   return pdfjs;
 }
 

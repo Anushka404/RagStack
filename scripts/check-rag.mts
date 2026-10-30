@@ -1,6 +1,6 @@
 // Self-check for the pure RAG pipeline logic. Run: node --experimental-strip-types scripts/check-rag.mts
 import assert from "node:assert/strict";
-import { parseCsv, removeRepeatedLines } from "../lib/pdf/parse.ts";
+import { collapseRepeats, looksScanned, parseCsv, removeRepeatedLines } from "../lib/pdf/parse.ts";
 import { extractCitations, parseClaims } from "../lib/rag/claims.ts";
 import { firstHitRank, summarize } from "../lib/rag/evaluate.ts";
 import { understandQuery } from "../lib/rag/query-understanding.ts";
@@ -14,6 +14,30 @@ const cleaned = removeRepeatedLines(pages);
 assert.equal(cleaned.removed, 8);
 assert.ok(cleaned.pages.every((p, i) => p.includes(`Body text number ${i + 1}`) && !p.includes("Confidential") && !p.includes("Annual Report")));
 assert.equal(removeRepeatedLines(pages.slice(0, 2)).removed, 0, "too few pages to judge");
+// OCR of a ruled notebook (real output from the PPS notes): the printed boxes come out
+// differently each page, but they are one header; a code page's closing "}" must survive.
+const body = (topic: string) => [1, 2, 3, 4, 5, 6].map((n) => `${topic} note line ${n}`).join("\n");
+const ocrPages = [
+  `DATE [ ] [ ] [ ]\nOperators and expressions\n${body("types")}\nRed Wings\nPAGE`,
+  `DATE □ □ □ □\nArithmetic operators\n${body("arith")}\nprintf(a);\n}\nRed Wings PAGE [ ] [ ]`,
+  `DATE [ ] [ ] [ ] [ ] [ ]\nRelational operators\n${body("rel")}\nRed Wings PAGE □ □ □`,
+  `DATE\nLogical operators\n${body("logic")}\nreturn b;\n}\nRed Wings PAGE [ ]`,
+];
+const ocrCleaned = removeRepeatedLines(ocrPages);
+assert.ok(ocrCleaned.pages.every((p) => !/DATE|Red Wings/.test(p)), "notebook header/footer removed");
+assert.ok(ocrCleaned.pages[1].includes("}") && ocrCleaned.pages[3].includes("}"), "closing braces kept");
+assert.ok(ocrCleaned.pages[0].includes("Operators and expressions"), "body kept");
+
+// Scan detection (real text layers from the Cloud Computing notes): a tiled watermark is a scan.
+assert.equal(looksScanned(""), true);
+assert.equal(looksScanned("Multi Atoms Notes"), true);
+assert.equal(looksScanned("Multi AtomsMulti AtomsMulti Atoms\nMulti AtomsMulti AtomsMulti Atoms\nMulti AtomsMulti AtomsMulti Atoms"), true);
+assert.equal(looksScanned("Cloud enabling technologies are the foundational tools and systems that allow deployment"), false);
+
+// OCR loop on page 46 of the Cloud Computing notes: the dashes collapse, real text and short repeats stay.
+assert.equal(collapseRepeats(`<soap : Envelope ${"- ".repeat(900)}`), "<soap : Envelope - - - ");
+assert.equal(collapseRepeats("R1 R2\n0 0 0\n1 1 1\n4 -> 0100"), "R1 R2\n0 0 0\n1 1 1\n4 -> 0100");
+assert.equal(collapseRepeats("x".repeat(9)), "x".repeat(9), "nine repeats is below the threshold");
 
 // Query understanding: only years and collections that exist count.
 const available = { years: [2026, 2027], collections: ["Tsunami archive", "General"] };

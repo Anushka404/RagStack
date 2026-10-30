@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ChunkRow, DocumentRow } from "@/types/documents";
 import { formatBytes } from "@/lib/client/format";
+import { DEMO_STAGE } from "@/lib/stage";
 
 export type Selection =
   | { kind: "collection"; collection: string }
@@ -66,7 +67,7 @@ export function NodeDetail({ selection, documents, chunksByDoc, deletingId, onDe
         {selection.kind === "collection" && <Row label="Years" value={years.join(", ") || "None set"} />}
         <Row label="Tags" value={tags.join(", ") || "None"} />
         <Row label="Retrieval filter" mono value={`collection = "${selection.collection}"${year ? ` AND year = ${year}` : ""}`} />
-        <div className="mt-4"><AskLink params={{ collection: selection.collection, year }} /></div>
+        {DEMO_STAGE >= 2 && <div className="mt-4"><AskLink params={{ collection: selection.collection, year }} /></div>}
       </div>
     );
   }
@@ -95,7 +96,7 @@ export function NodeDetail({ selection, documents, chunksByDoc, deletingId, onDe
         <Row label="Uploaded" value={new Date(doc.created_at).toLocaleString()} />
         <Row label="Document id" mono value={doc.document_id} />
         <div className="mt-4 flex flex-wrap gap-2">
-          {doc.status === "ready" && <AskLink params={{ doc: doc.document_id }} />}
+          {DEMO_STAGE >= 2 && doc.status === "ready" && <AskLink params={{ doc: doc.document_id }} />}
           {doc.status === "failed" && (
             <button onClick={() => onRetry(doc)} className="px-3 py-1.5 rounded-lg text-xs font-medium border border-white/[0.1] hover:bg-white/[0.05]">
               Retry processing

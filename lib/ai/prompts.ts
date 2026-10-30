@@ -1,4 +1,10 @@
 import { PromptTemplate } from "@langchain/core/prompts";
+import { DEMO_STAGE } from "@/lib/stage";
+
+// Inline [n] citations are part of demo stage 3; earlier stages mention the page in prose.
+const CITATION_RULE = DEMO_STAGE >= 3
+  ? "- After each sentence that uses the context, cite the supporting passages by number in square brackets, like [1] or [2][3]. Cite only passages that actually support that sentence."
+  : '- When you reference something from the document, you may naturally mention the source (e.g., "According to page 3...").';
 
 /**
  * Main RAG system prompt.
@@ -14,7 +20,7 @@ Rules:
 - Be concise and direct.
 - Each passage starts with a label like "[2] report.pdf · 2026 · page 3" giving its source, year and page.
 - When the question compares years or documents, answer side by side (one point per year or document), and say plainly when one side has no information.
-- After each sentence that uses the context, cite the supporting passages by number in square brackets, like [1] or [2][3]. Cite only passages that actually support that sentence.
+${CITATION_RULE}
 
 Recent Conversation:
 {history}
